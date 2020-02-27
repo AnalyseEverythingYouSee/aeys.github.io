@@ -1,0 +1,552 @@
+
+<head>
+    <meta charset="utf-8">
+
+    <title>Detecting Power Usage</title>
+
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width,minimum-scale=1,initial-scale=1">
+
+    <link rel="shortcut icon" href="../../favicon.ico" type="image/x-icon">
+    <link rel="canonical" href="../index.html">
+    <meta name="referrer" content="no-referrer-when-downgrade">
+    
+    <meta property="og:site_name" content="Analyse Everything You See">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Detecting Power Usage">
+    <meta property="og:description" content="In this post, I had some time series data that was measuring electrical outlet usage. The goal was to detect periods of consumption.">
+    <meta property="og:url" content="http://localhost:2368/detecting-power-usage/">
+    <meta property="og:image" content="http://localhost:2368/content/images/2020/02/electricity.jpg">
+    <meta property="article:published_time" content="2020-02-27T03:35:28.000Z">
+    <meta property="article:modified_time" content="2020-02-27T06:35:38.000Z">
+    <meta property="article:tag" content="R">
+    <meta property="article:tag" content="Time Series">
+    <meta property="article:tag" content="Machine Learning">
+    
+    <meta property="article:publisher" content="https://www.facebook.com/ghost">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Detecting Power Usage">
+    <meta name="twitter:description" content="In this post, I had some time series data that was measuring electrical outlet usage. The goal was to detect periods of consumption.">
+    <meta name="twitter:url" content="http://localhost:2368/detecting-power-usage/">
+    <meta name="twitter:image" content="http://localhost:2368/content/images/2020/02/electricity.jpg">
+    <meta name="twitter:label1" content="Written by">
+    <meta name="twitter:data1" content="Gary">
+    <meta name="twitter:label2" content="Filed under">
+    <meta name="twitter:data2" content="R, Time Series, Machine Learning">
+    <meta name="twitter:site" content="@tryghost">
+    <meta property="og:image:width" content="1280">
+    <meta property="og:image:height" content="720">
+    
+    <script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "publisher": {
+        "@type": "Organization",
+        "name": "Analyse Everything You See",
+        "logo": "https://static.ghost.org/v1.0.0/images/ghost-logo.svg"
+    },
+    "author": {
+        "@type": "Person",
+        "name": "Gary",
+        "image": {
+            "@type": "ImageObject",
+            "url": "https://static.ghost.org/v3.0.0/images/ghost.png",
+            "width": 400,
+            "height": 400
+        },
+        "url": "http://localhost:2368/author/gary/",
+        "sameAs": [
+            "http://gclarkjr5.github.io/"
+        ]
+    },
+    "headline": "Detecting Power Usage",
+    "url": "http://localhost:2368/detecting-power-usage/",
+    "datePublished": "2020-02-27T03:35:28.000Z",
+    "dateModified": "2020-02-27T06:35:38.000Z",
+    "image": {
+        "@type": "ImageObject",
+        "url": "http://localhost:2368/content/images/2020/02/electricity.jpg",
+        "width": 1280,
+        "height": 720
+    },
+    "keywords": "R, Time Series, Machine Learning",
+    "description": "In this post, I had some time series data that was measuring electrical outlet usage. The goal was to detect periods of consumption.",
+    "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "http://localhost:2368/"
+    }
+}
+    </script>
+
+    <meta name="generator" content="Ghost 3.8">
+    <link rel="alternate" type="application/rss+xml" title="Analyse Everything You See" href="../../rss/index.html">
+
+    <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Merriweather:300,700,700italic,300italic%7COpen+Sans:700,600,400">
+    <style amp-custom>html{font-family:sans-serif;-ms-text-size-adjust:100%;-webkit-text-size-adjust:100%}body{margin:0}article,aside,details,figcaption,figure,footer,header,main,menu,nav,section,summary{display:block}audio,canvas,progress,video{display:inline-block;vertical-align:baseline}audio:not([controls]){display:none;height:0}[hidden],template{display:none}a{background-color:transparent}a:active,a:hover{outline:0}abbr[title]{border-bottom:1px dotted}b,strong{font-weight:bold}dfn{font-style:italic}h1{margin:0.67em 0;font-size:2em}mark{background:#ff0;color:#000}small{font-size:80%}sub,sup{position:relative;vertical-align:baseline;font-size:75%;line-height:0}sup{top:-0.5em}sub{bottom:-0.25em}img{border:0}amp-img{border:0}svg:not(:root){overflow:hidden}figure{margin:1em 40px}hr{box-sizing:content-box;height:0}pre{overflow:auto}code,kbd,pre,samp{font-family:monospace, monospace;font-size:1em}button,input,optgroup,select,textarea{margin:0;color:inherit;font:inherit}button{overflow:visible}button,select{text-transform:none}button,html input[type="button"],input[type="reset"],input[type="submit"]{cursor:pointer;-webkit-appearance:button}button[disabled],html input[disabled]{cursor:default}button::-moz-focus-inner,input::-moz-focus-inner{padding:0;border:0}input{line-height:normal}input[type="checkbox"],input[type="radio"]{box-sizing:border-box;padding:0}input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{height:auto}input[type="search"]{-webkit-appearance:textfield}input[type="search"]::-webkit-search-cancel-button,input[type="search"]::-webkit-search-decoration{-webkit-appearance:none}fieldset{margin:0 2px;padding:0.35em 0.625em 0.75em;border:1px solid #c0c0c0}legend{padding:0;border:0}textarea{overflow:auto}optgroup{font-weight:bold}table{border-spacing:0;border-collapse:collapse}td,th{padding:0}html{max-height:100%;height:100%;font-size:62.5%;-webkit-tap-highlight-color:rgba(0, 0, 0, 0)}body{max-height:100%;height:100%;color:#3a4145;background:#f4f8fb;letter-spacing:0.01rem;font-family:"Merriweather", serif;font-size:1.8rem;line-height:1.75em;text-rendering:geometricPrecision;-webkit-font-feature-settings:"kern" 1;-moz-font-feature-settings:"kern" 1;-o-font-feature-settings:"kern" 1}::-moz-selection{background:#d6edff}::selection{background:#d6edff}h1,h2,h3,h4,h5,h6{margin:0 0 0.3em 0;color:#2e2e2e;font-family:"Open Sans", sans-serif;line-height:1.15em;text-rendering:geometricPrecision;-webkit-font-feature-settings:"dlig" 1, "liga" 1, "lnum" 1, "kern" 1;-moz-font-feature-settings:"dlig" 1, "liga" 1, "lnum" 1, "kern" 1;-o-font-feature-settings:"dlig" 1, "liga" 1, "lnum" 1, "kern" 1}h1{text-indent:-2px;letter-spacing:-1px;font-size:2.6rem}h2{letter-spacing:0;font-size:2.4rem}h3{letter-spacing:-0.6px;font-size:2.1rem}h4{font-size:1.9rem}h5{font-size:1.8rem}h6{font-size:1.8rem}a{color:#4a4a4a}a:hover{color:#111}p,ul,ol,dl{margin:0 0 2.5rem 0;font-size:1.5rem;text-rendering:geometricPrecision;-webkit-font-feature-settings:"liga" 1, "onum" 1, "kern" 1;-moz-font-feature-settings:"liga" 1, "onum" 1, "kern" 1;-o-font-feature-settings:"liga" 1, "onum" 1, "kern" 1}ol,ul{padding-left:2em}ol ol,ul ul,ul ol,ol ul{margin:0 0 0.4em 0;padding-left:2em}dl dt{float:left;clear:left;overflow:hidden;margin-bottom:1em;width:180px;text-align:right;text-overflow:ellipsis;white-space:nowrap;font-weight:700}dl dd{margin-bottom:1em;margin-left:200px}li{margin:0.4em 0}li li{margin:0}hr{display:block;margin:1.75em 0;padding:0;height:1px;border:0;border-top:#efefef 1px solid}blockquote{box-sizing:border-box;margin:1.75em 0 1.75em 0;padding:0 0 0 1.75em;border-left:#4a4a4a 0.4em solid;-moz-box-sizing:border-box}blockquote p{margin:0.8em 0;font-style:italic}blockquote small{display:inline-block;margin:0.8em 0 0.8em 1.5em;color:#ccc;font-size:0.9em}blockquote small:before{content:"\2014 \00A0"}blockquote cite{font-weight:700}blockquote cite a{font-weight:normal}mark{background-color:#fdffb6}code,tt{padding:1px 3px;border:#e3edf3 1px solid;background:#f7fafb;border-radius:2px;white-space:pre-wrap;font-family:Inconsolata, monospace, sans-serif;font-size:0.85em;font-feature-settings:"liga" 0;-webkit-font-feature-settings:"liga" 0;-moz-font-feature-settings:"liga" 0}pre{overflow:auto;box-sizing:border-box;margin:0 0 1.75em 0;padding:10px;width:100%;border:#e3edf3 1px solid;background:#f7fafb;border-radius:3px;white-space:pre;font-family:Inconsolata, monospace, sans-serif;font-size:0.9em;-moz-box-sizing:border-box}pre code,pre tt{padding:0;border:none;background:transparent;white-space:pre-wrap;font-size:inherit}kbd{display:inline-block;margin-bottom:0.4em;padding:1px 8px;border:#ccc 1px solid;background:#f4f4f4;border-radius:4px;box-shadow:0 1px 0 rgba(0, 0, 0, 0.2), 0 1px 0 0 #fff inset;color:#666;text-shadow:#fff 0 1px 0;font-size:0.9em;font-weight:700}table{box-sizing:border-box;margin:1.75em 0;max-width:100%;width:100%;background-color:transparent;-moz-box-sizing:border-box}table th,table td{padding:8px;border-top:#efefef 1px solid;vertical-align:top;text-align:left;line-height:20px}table th{color:#000}table caption + thead tr:first-child th,table caption + thead tr:first-child td,table colgroup + thead tr:first-child th,table colgroup + thead tr:first-child td,table thead:first-child tr:first-child th,table thead:first-child tr:first-child td{border-top:0}table tbody + tbody{border-top:#efefef 2px solid}table table table{background-color:#fff}table tbody > tr:nth-child(odd) > td,table tbody > tr:nth-child(odd) > th{background-color:#f6f6f6}table.plain tbody > tr:nth-child(odd) > td,table.plain tbody > tr:nth-child(odd) > th{background:transparent}iframe,amp-iframe,.fluid-width-video-wrapper{display:block;margin:1.75em 0}.fluid-width-video-wrapper iframe,.fluid-width-video-wrapper amp-iframe{margin:0}textarea,select,input{margin:0 0 5px 0;padding:6px 9px;width:260px;outline:0;border:#e7eef2 1px solid;background:#fff;border-radius:4px;box-shadow:none;font-family:"Open Sans", sans-serif;font-size:1.6rem;line-height:1.4em;font-weight:100;-webkit-appearance:none}textarea{min-width:250px;min-height:80px;max-width:340px;width:100%;height:auto}input[type="text"]:focus,input[type="email"]:focus,input[type="search"]:focus,input[type="tel"]:focus,input[type="url"]:focus,input[type="password"]:focus,input[type="number"]:focus,input[type="date"]:focus,input[type="month"]:focus,input[type="week"]:focus,input[type="time"]:focus,input[type="datetime"]:focus,input[type="datetime-local"]:focus,textarea:focus{outline:none;outline-width:0;border:#bbc7cc 1px solid;background:#fff}select{width:270px;height:30px;line-height:30px}.clearfix:before,.clearfix:after{content:" ";display:table}.clearfix:after{clear:both}.clearfix{zoom:1}.main-header{position:relative;display:table;overflow:hidden;box-sizing:border-box;width:100%;height:50px;background:#5ba4e5 no-repeat center center;background-size:cover;text-align:left;-webkit-box-sizing:border-box;-moz-box-sizing:border-box}.content{background:#fff;padding-top:15px}.blog-title,.content{margin:auto;max-width:600px}.blog-title a{display:block;padding-right:16px;padding-left:16px;height:50px;color:#fff;text-decoration:none;font-family:"Open Sans", sans-serif;font-size:16px;line-height:50px;font-weight:600}.post{position:relative;margin-top:0;margin-right:16px;margin-left:16px;padding-bottom:0;max-width:100%;border-bottom:#ebf2f6 1px solid;word-wrap:break-word;font-size:0.95em;line-height:1.65em}.post-header{margin-bottom:1rem}.post-title{margin-bottom:0}.post-title a{text-decoration:none}.post-meta{display:block;margin:3px 0 0 0;color:#9eabb3;font-family:"Open Sans", sans-serif;font-size:1.3rem;line-height:2.2rem}.post-meta a{color:#9eabb3;text-decoration:none}.post-meta a:hover{text-decoration:underline}.post-meta .author{margin:0;font-size:1.3rem;line-height:1.3em}.post-date{display:inline-block;text-transform:uppercase;white-space:nowrap;font-size:1.2rem;line-height:1.2em}.post-image{margin:0;padding-top:3rem;padding-bottom:30px;border-top:1px #E8E8E8 solid}.post-content amp-img,.post-content amp-anim{position:relative;left:50%;display:block;padding:0;min-width:0;max-width:112%;width:calc(100% + 32px);height:auto;transform:translateX(-50%);-webkit-transform:translateX(-50%);-ms-transform:translateX(-50%)}.footnotes{font-size:1.3rem;line-height:1.6em;font-style:italic}.footnotes li{margin:0.6rem 0}.footnotes p{margin:0}.footnotes p a:last-child{text-decoration:none}.site-footer{position:relative;margin:0 auto 20px auto;padding:1rem 15px;max-width:600px;color:rgba(0,0,0,0.5);font-family:"Open Sans", sans-serif;font-size:1.1rem;line-height:1.75em}.site-footer a{color:rgba(0,0,0,0.5);text-decoration:none;font-weight:bold}.site-footer a:hover{border-bottom:#bbc7cc 1px solid}.poweredby{display:block;float:right;width:45%;text-align:right}.copyright{display:block;float:left;width:45%}</style>
+
+    <style amp-boilerplate>body{-webkit-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-moz-animation:-amp-start 8s steps(1,end) 0s 1 normal both;-ms-animation:-amp-start 8s steps(1,end) 0s 1 normal both;animation:-amp-start 8s steps(1,end) 0s 1 normal both}@-webkit-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-moz-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-ms-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@-o-keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}@keyframes -amp-start{from{visibility:hidden}to{visibility:visible}}</style><noscript><style amp-boilerplate>body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}</style></noscript>
+    <script async src="https://cdn.ampproject.org/v0.js"></script>
+
+    
+
+</head>
+
+<body class="amp-template">
+    <header class="main-header">
+        <nav class="blog-title">
+            <a href="../../">Analyse Everything You See</a>
+        </nav>
+    </header>
+
+    <main class="content" role="main">
+        <article class="post">
+
+            <header class="post-header">
+                <h1 class="post-title">Detecting Power Usage</h1>
+                <section class="post-meta">
+                    <p class="author">by <a href="../../author/gary/">Gary</a>, <a href="../../author/aeys/">aeys</a></p>
+                    <time class="post-date" datetime="2020-02-27">2020-02-27</time>
+                </section>
+            </header>
+            <figure class="post-image">
+                <amp-img src="http://localhost:2368/content/images/2020/02/electricity.jpg" width="600" height="400" layout="responsive"></amp-img>
+            </figure>
+            <section class="post-content">
+
+                <h2 id="problemstatement">Problem Statement</h2>
+<ol>
+<li>
+<p>Detect episodes of usage within the sample of data provided, with start and stop timestamps.</p>
+</li>
+<li>
+<p>Show the original data with the usage episodes marked for easy comparison.</p>
+</li>
+<li>
+<p>Documentation regarding algorithms, data prep steps, and transformations to solve 1 &amp; 2. Describe any problems encountered or stumbling blocks in this kind of analysis.</p>
+</li>
+</ol>
+<h2 id="setup">Setup</h2>
+<pre><code class="language-r">rm(list=ls())
+options(warn=-1)
+</code></pre>
+<h3 id="loadlibraries">Load libraries</h3>
+<pre><code class="language-r">library(dplyr) # data manipulation
+library(tidyr) # reshaping data
+library(ggplot2) # visualizations
+library(gridExtra) # arranging visualizations
+library(lubridate) # working with date-time
+library(readr) # reading/writing data
+library(zoo) # working with time-series data
+library(forecast) # useful time-series analytics
+library(infer) # applying statistical inference
+library(factoextra) # easily applying kmeans elbow method plotting
+</code></pre>
+<h3 id="readandviewthedata">Read and View the Data</h3>
+<pre><code class="language-r">df = readr::read_csv("data-sample.csv")
+
+head(df)
+</code></pre>
+<table>
+<caption>A tibble: 6 × 2</caption>
+<thead>
+	<tr><th scope="col">timestamp</th><th scope="col">power</th></tr>
+	<tr><th scope="col">&lt;chr&gt;</th><th scope="col">&lt;dbl&gt;</th></tr>
+</thead>
+<tbody>
+	<tr><td>2019-06-14 00:00:00 EDT</td><td>27.41</td></tr>
+	<tr><td>2019-06-14 00:01:00 EDT</td><td>27.40</td></tr>
+	<tr><td>2019-06-14 00:02:00 EDT</td><td>27.42</td></tr>
+	<tr><td>2019-06-14 00:03:00 EDT</td><td>27.42</td></tr>
+	<tr><td>2019-06-14 00:04:00 EDT</td><td>27.42</td></tr>
+	<tr><td>2019-06-14 00:05:00 EDT</td><td>27.43</td></tr>
+</tbody>
+</table>
+<p>One of the first things I noticed is that the timestamps have been read in as a character vector. Let's change that to the appropriate data type.</p>
+<pre><code class="language-r">df = df %&gt;%
+  mutate(timestamp = ymd_hms(timestamp, tz = "US/Eastern"))
+
+head(df)
+</code></pre>
+<table>
+<caption>A tibble: 6 × 2</caption>
+<thead>
+	<tr><th scope="col">timestamp</th><th scope="col">power</th></tr>
+	<tr><th scope="col">&lt;dttm&gt;</th><th scope="col">&lt;dbl&gt;</th></tr>
+</thead>
+<tbody>
+	<tr><td>2019-06-14 00:00:00</td><td>27.41</td></tr>
+	<tr><td>2019-06-14 00:01:00</td><td>27.40</td></tr>
+	<tr><td>2019-06-14 00:02:00</td><td>27.42</td></tr>
+	<tr><td>2019-06-14 00:03:00</td><td>27.42</td></tr>
+	<tr><td>2019-06-14 00:04:00</td><td>27.42</td></tr>
+	<tr><td>2019-06-14 00:05:00</td><td>27.43</td></tr>
+</tbody>
+</table>
+<p>Now that our data is in the right format, let's move onto some EDA (Exploratory Data Analysis).</p>
+<h2 id="exploration">Exploration</h2>
+<h3 id="visualizingthedata">Visualizing the Data</h3>
+<p>First we will visualize the data to get a clear picture of what we're working with</p>
+<pre><code class="language-r">df %&gt;%
+  ggplot(aes(x = timestamp, y = power)) +
+  geom_line() +
+  ggtitle("Power Consumption over a 24hr Period")
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><p>As mentioned in the exercise, we can see that the power stabilizes at 3 different levels. These "stable" periods are referred to as idle/background consumption. In addition to idle consumption, there also seem to be 2 other features that appear:</p>
+<ol>
+<li>Small spikes/noise of about +/- 1 watt</li>
+</ol>
+<ul>
+<li>This could be valid usage, or could also be heavier noise occurring during idle consumption</li>
+</ul>
+<ol start="2">
+<li>Large spikes varying about 10-12 watts</li>
+</ol>
+<ul>
+<li>These look like valid usage episodes</li>
+</ul>
+<h3 id="assumptions">Assumptions</h3>
+<p>Now that I have had the opportunit to briefly look at the data, I'm going to make some assumptions before moving forward.</p>
+<ol>
+<li>
+<p>The data is a <strong>representative sample</strong> of the population.</p>
+</li>
+<li>
+<p>The small spikes are noise in idle consumption.</p>
+</li>
+<li>
+<p>The large spikes are <strong>valid</strong> usage episodes and what should be targeted for detection.</p>
+</li>
+</ol>
+<h3 id="describingthedata">Describing the Data</h3>
+<pre><code class="language-r">hist = df %&gt;%
+  ggplot(aes(power)) +
+  geom_histogram()
+
+dens = df %&gt;%
+  ggplot(aes(power)) +
+  geom_density()
+
+box = df %&gt;%
+  ggplot(aes(x = 1, y = power)) +
+  geom_boxplot()
+
+summ = summary(df %&gt;% select(-timestamp))
+
+grid.arrange(hist, box, dens, tableGrob(summ), nrow = 2)
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><p>As expected, the histogram and density plots show the shape of the data where the data clusters at the 3 different levels that the idle consumption bounces to. What is a bit unexpected, though, is how no outliers are showing up in the boxplot. I have a hunch that if we look at the spread of data in hourly windows, we would start to see outliers appear. Let's quickly see.</p>
+<pre><code class="language-r"># Parse the timestamps
+df_broken = df %&gt;%
+  mutate_at(vars(timestamp), funs(year, month, day, hour))
+
+df_broken %&gt;%
+  ggplot(aes(x = as.factor(hour), y = power)) +
+  geom_boxplot() +
+  xlab("Hours of the Day") +
+  ggtitle("Hourly boxplots")
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><p>Now this definitely helps a bit more. We can clearly see the idle consumption levels, and also varying ranges of outliers. This is particularly useful for testing statistical significance.</p>
+<h3 id="transformingthedata">Transforming the Data</h3>
+<p>We can see a clear downward trend of the idle consumption (and overall data) over time which could make detection a bit more complex. However, we can transform the data by differencing it to see if this makes the data more stationary and removes the trend</p>
+<pre><code class="language-r">df_diff = df %&gt;%
+  mutate(power_diff = power - lag(power))
+
+df_diff %&gt;%
+  gather("key", "value", -timestamp) %&gt;%
+  ggplot(aes(x = timestamp, y = value)) +
+  geom_line() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_grid(key~., scales = "free") +
+  ylab("watts") +
+  ggtitle("Power vs Power Differencing")
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><p>Power differenced is much more stable, and will prove much easier to work with. Let's re-do the histogram.</p>
+<pre><code class="language-r">p1 = df_diff %&gt;%
+  ggplot(aes(power_diff)) +
+  geom_histogram() +
+  xlab("power diff")
+
+p2 = df_diff %&gt;%
+  ggplot(aes(power_diff)) +
+  geom_histogram() +
+  xlim(c(-0.1,0.1)) +
+  xlab("power diff") +
+  ggtitle("Zoomed-In")
+  
+
+grid.arrange(p1, p2, nrow = 1)
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><p>We can see the differenced background noise consumption (tall peak) is pretty symmetrical (shown better in the plot to the right) and that it fluctuates within about +/- 0.25 of its previous value at times.</p>
+<p>This is a <strong>VERY</strong> Leptokurtic distribution. It's almost uniform. While this could pose some challenges for different statistical techniques, we will carry forward nonetheless to see if that is the case as the data is much more "normal-like" than prior to differencing.</p>
+<p>Now that our data is more "normal-like", we can attempt to describe it with some stats. Namely the 2 that would describe it best are:</p>
+<ol>
+<li>
+<p>The mean for its central tendency</p>
+</li>
+<li>
+<p>The standard deviation for its spread</p>
+</li>
+</ol>
+<p>Instead of getting these values straight-up, we can potentially get more value out of how they change over time. To do this I'll use an hour long window that will roll every minute over the <strong>Power Difference</strong> collecting the <em>mean</em> and <em>standard deviation</em>.</p>
+<p>At this point I am also going to transform the Power Difference by taking the absolute value of it. If we refer back to the 3rd assumption, that we are to detect the large spikes, then if a large spike up would denote the start of a usage period, a large spike down would mean the end of the period. For this analysis, I'm only going to be concerned with the magnitude of the change. (It's possible that direction could be useful if used correctly)</p>
+<pre><code class="language-r"># Convert power difference to absolute value
+df_diff$power_diff = abs(df_diff$power_diff)
+
+# Convert data to time-series object
+df_diff_ts = zoo(df_diff$power_diff, order.by = df_diff$timestamp)
+
+# Calculate rollilng stats
+df_diff$mean_diff = rollapply(df_diff_ts, width = 60, FUN = mean, fill = NA)
+df_diff$sd_diff = rollapply(df_diff_ts, width = 60, FUN = sd, fill = NA)
+
+# Renaming the variable names for ordering of plot and turning the mean_diff and sd_diff back to numeric data types
+df_diff = df_diff %&gt;%
+  mutate_at(vars(mean_diff, sd_diff), as.numeric)
+  
+
+df_diff %&gt;%
+  rename(
+    "a_power"=power,
+    "b_power_diff"=power_diff,
+    "c_mean_diff"=mean_diff,
+    "d_sd_diff"=sd_diff
+  ) %&gt;%
+  gather("key", "value", -timestamp) %&gt;%
+  ggplot(aes(x = timestamp, y = value)) +
+  geom_line() +
+  facet_grid(key~., scales = "free") +
+  ylab("watts") +
+  ggtitle("Rolling Mean &amp; Std Dev on Power Difference")
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><h2 id="detectingusage">Detecting Usage</h2>
+<p>Now that we have several different views of our data, let's look to see if we can use them to detect when usage occurs. I think setting thresholds is a logical &amp; simple first step to seeing if it can get the job done.</p>
+<h3 id="settingthresholdsusinginferentialstatistics">Setting Thresholds Using Inferential Statistics</h3>
+<p>Going back to our assumption #1 that the data is a <strong>representative sample</strong>, we can use it to infer what the mean and standard deviation of the population could be. This is performed by repeatedly sampling the data <em>with replacement</em>, calculating a stat across each bootsrap, and forming the <em>Null Distribution</em>. From there we can put confidence intervals around and use the intervals as our thresholds.</p>
+<pre><code class="language-r"># Get overall stats of absolute power difference
+overall_stats = df_diff %&gt;%
+  summarise(mean = mean(power_diff, na.rm = TRUE),
+            sd = sd(power_diff, na.rm = TRUE))
+
+mean_diff_overall = overall_stats %&gt;% pull(mean)
+sd_diff_overall = overall_stats %&gt;% pull(sd)
+
+# Create null distributions
+mean_diff_null_distn = df_diff %&gt;%
+  specify(response = power_diff) %&gt;%
+  hypothesize(null = "point", mu = mean_diff_overall) %&gt;%
+  generate(reps = 1000, type = "bootstrap") %&gt;%
+  calculate(stat = "mean")
+
+sd_diff_null_distn = df_diff %&gt;%
+  specify(response = power_diff) %&gt;%
+  hypothesize(null = "point", sigma = sd_diff_overall) %&gt;%
+  generate(reps = 1000, type = "bootstrap") %&gt;%
+  calculate(stat = "sd")
+
+# Get confidence intervals - use 97.5% as we are only concerned with values that are significantly larger
+ci_mean = mean_diff_null_distn %&gt;% get_ci() %&gt;% pull(`97.5%`)
+ci_sd = sd_diff_null_distn %&gt;% get_ci() %&gt;% pull(`97.5%`)
+</code></pre>
+<p>Now that we have our thresholds let's apply them and see how we did.</p>
+<pre><code class="language-r">df_diff_usage = df_diff %&gt;%
+  mutate(usage = ifelse((power_diff &gt; 2.5 &amp; mean_diff &gt; ci_mean &amp; sd_diff &gt; ci_sd), TRUE, FALSE))
+
+df_diff_usage %&gt;%
+  rename(
+    "a_power"=power,
+    "b_power_diff"=power_diff,
+    "c_mean_diff"=mean_diff,
+    "d_sd_diff"=sd_diff
+  ) %&gt;%
+  gather("key", "value", -timestamp, -usage) %&gt;%
+  ggplot(aes(x = timestamp, y = value)) +
+  geom_vline(xintercept = df_diff_usage$timestamp[which(df_diff_usage$usage)], color = "red") +
+  geom_line() +
+  facet_grid(key ~ ., scales = "free") +
+  ylab("watts") +
+  ggtitle("Statistical Inference")
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><pre><code class="language-r">start = c()
+end = c()
+
+df_diff_usage$usage[1] = FALSE
+
+for(i in 2:(nrow(df_diff_usage) - 1)) {
+  if(df_diff_usage$usage[i]) {
+    if((df_diff_usage$usage[i-1] == TRUE &amp; df_diff_usage$usage[i+1] == TRUE)) {
+      next
+    } else if ((df_diff_usage$usage[i-1] == FALSE &amp; df_diff_usage$usage[i+1] == TRUE)) {
+      start[[i]] = df_diff_usage$timestamp[i]
+    } else if ((df_diff_usage$usage[i-1] == TRUE &amp; df_diff_usage$usage[i+1] == FALSE)) {
+      end[[i]] = df_diff_usage$timestamp[i]
+    } else {
+      start[[i]] = df_diff_usage$timestamp[i]
+      end[[i]] = df_diff_usage$timestamp[i]
+    }
+      
+  } else {
+    next
+  }
+}
+
+start = as_datetime(start[complete.cases(start)], tz = "US/Eastern")
+end = as_datetime(end[complete.cases(end)], tz = "US/Eastern")
+
+final_df = data.frame(start = start, end = end) %&gt;%
+  mutate(usage_length = end - start,
+         usage_length = ifelse(usage_length == 0, "&lt;60 secs", usage_length))
+
+final_df
+</code></pre>
+<table>
+<caption>A data.frame: 18 × 3</caption>
+<thead>
+	<tr><th scope="col">start</th><th scope="col">end</th><th scope="col">usage_length</th></tr>
+	<tr><th scope="col">&lt;dttm&gt;</th><th scope="col">&lt;dttm&gt;</th><th scope="col">&lt;chr&gt;</th></tr>
+</thead>
+<tbody>
+	<tr><td>2019-06-14 09:32:00</td><td>2019-06-14 09:33:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 09:35:00</td><td>2019-06-14 09:36:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 09:38:00</td><td>2019-06-14 09:38:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:00:00</td><td>2019-06-14 10:00:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:03:00</td><td>2019-06-14 10:03:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:07:00</td><td>2019-06-14 10:07:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:10:00</td><td>2019-06-14 10:13:00</td><td>180     </td></tr>
+	<tr><td>2019-06-14 10:15:00</td><td>2019-06-14 10:15:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 13:44:00</td><td>2019-06-14 13:45:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 13:49:00</td><td>2019-06-14 13:51:00</td><td>120     </td></tr>
+	<tr><td>2019-06-14 13:55:00</td><td>2019-06-14 13:56:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 14:00:00</td><td>2019-06-14 14:00:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 14:51:00</td><td>2019-06-14 14:52:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 14:54:00</td><td>2019-06-14 14:54:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 14:56:00</td><td>2019-06-14 14:57:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 14:59:00</td><td>2019-06-14 14:59:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 16:26:00</td><td>2019-06-14 16:26:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 16:29:00</td><td>2019-06-14 16:32:00</td><td>180     </td></tr>
+</tbody>
+</table>
+<h3 id="usingunsupervisedlearning">Using Unsupervised Learning</h3>
+<p>I feel that the above is a sound method for this exercise, however, I am curious to see how an algorithm like KMeans could perform against this data. I will let it cluster the data against the transformations I created, i.e power_diff, mean_diff, and sd_diff.</p>
+<pre><code class="language-r">df_km_usage = df_diff %&gt;%
+  filter(!is.na(mean_diff),
+         !is.na(sd_diff))
+
+set.seed(0415)
+
+# Find optimal number of clusters using the elbow method
+fviz_nbclust(df_km_usage %&gt;% select(-timestamp, -power), kmeans, method = "wss")
+
+real_k = kmeans(df_km_usage %&gt;% select(-timestamp, -power), centers = 3)
+df_km_usage$cluster = real_k$cluster
+
+df_km_usage %&gt;%
+  rename(
+    "a_power"=power,
+    "b_power_diff"=power_diff,
+    "c_mean_diff"=mean_diff,
+    "d_sd_diff"=sd_diff
+    # "e_usage"=usage
+  ) %&gt;%
+  gather("key", "value", -timestamp, -cluster) %&gt;%
+  ggplot(aes(x=timestamp, y = value)) +
+  geom_vline(xintercept = df_km_usage$timestamp[df_km_usage$cluster == 2], col = "red") +
+  geom_line() +
+  facet_grid(key~., scales="free") +
+  ylab("watts") +
+  ggtitle("KMeans Usage Detection")
+</code></pre>
+<figure class="kg-card kg-image-card"></figure><figure class="kg-card kg-image-card"></figure><pre><code class="language-r">df_km_us = df_km_usage %&gt;%
+  mutate(usage = ifelse(cluster == 2, TRUE, FALSE))
+
+start_k = c()
+end_k = c()
+
+for(i in 2:(nrow(df_km_us) - 1)) {
+  if(df_km_us$usage[i]) {
+    
+    if((df_km_us$usage[i-1] == TRUE &amp; df_km_us$usage[i+1] == TRUE)) {
+      next
+    }
+    else if ((df_km_us$usage[i-1] == FALSE &amp; df_km_us$usage[i+1] == TRUE)) {
+      start_k[[i]] = df_km_us$timestamp[i]
+    } else if ((df_km_us$usage[i-1] == TRUE &amp; df_km_us$usage[i+1] == FALSE)) {
+      end_k[[i]] = df_km_us$timestamp[i]
+    } else {
+      start_k[[i]] = df_km_us$timestamp[i]
+      end_k[[i]] = df_km_us$timestamp[i]
+    }
+      
+  } else {
+    next
+  }
+}
+
+start_k = as_datetime(start_k[complete.cases(start_k)], tz = "US/Eastern")
+end_k = as_datetime(end_k[complete.cases(end_k)], tz = "US/Eastern")
+
+final_df_k = data.frame(start_k = start_k, end_k = end_k) %&gt;%
+  mutate(usage_length_k = end_k - start_k,
+         usage_length_k = ifelse(usage_length_k == 0, "&lt;60 secs", usage_length_k))
+
+final_df_k
+</code></pre>
+<table>
+<caption>A data.frame: 20 × 3</caption>
+<thead>
+	<tr><th scope="col">start_k</th><th scope="col">end_k</th><th scope="col">usage_length_k</th></tr>
+	<tr><th scope="col">&lt;dttm&gt;</th><th scope="col">&lt;dttm&gt;</th><th scope="col">&lt;chr&gt;</th></tr>
+</thead>
+<tbody>
+	<tr><td>2019-06-14 06:02:00</td><td>2019-06-14 06:02:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 09:32:00</td><td>2019-06-14 09:33:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 09:35:00</td><td>2019-06-14 09:36:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 09:38:00</td><td>2019-06-14 09:38:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:00:00</td><td>2019-06-14 10:00:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:03:00</td><td>2019-06-14 10:03:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:07:00</td><td>2019-06-14 10:07:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 10:10:00</td><td>2019-06-14 10:12:00</td><td>120     </td></tr>
+	<tr><td>2019-06-14 10:15:00</td><td>2019-06-14 10:15:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 11:54:00</td><td>2019-06-14 11:55:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 13:44:00</td><td>2019-06-14 13:45:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 13:49:00</td><td>2019-06-14 13:51:00</td><td>120     </td></tr>
+	<tr><td>2019-06-14 13:55:00</td><td>2019-06-14 13:56:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 14:00:00</td><td>2019-06-14 14:00:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 14:51:00</td><td>2019-06-14 14:52:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 14:54:00</td><td>2019-06-14 14:54:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 14:56:00</td><td>2019-06-14 14:57:00</td><td>60      </td></tr>
+	<tr><td>2019-06-14 14:59:00</td><td>2019-06-14 14:59:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 16:26:00</td><td>2019-06-14 16:26:00</td><td>&lt;60 secs</td></tr>
+	<tr><td>2019-06-14 16:29:00</td><td>2019-06-14 16:32:00</td><td>180     </td></tr>
+</tbody>
+</table>
+<h2 id="conclusion">Conclusion</h2>
+<h3 id="methodologydecision">Methodology Decision</h3>
+<p>I think that both methods worked pretty well with the data. I believe there are pros and cons to both as far as I can see.</p>
+<p>I feel as though using statistical inference allows for more flexibility from a tuning perspective since you can tweak the thresholds, etc. However, at the same time that is a manual process that would need to be monitored/revisited.</p>
+<p>With KMeans, the opposite is somewhat true. There's less threshold tweaking involved, and more hyperparameter tuning to find which combinations optimally detect usage.</p>
+<p>If I had to choose which one I think did better in this exercise (w/o knowing the right answer) I would choose the <strong>KMeans</strong> algorithm. While both methods captured the large spikes, there were some other medium-sized spikes that occurred in the data that seemd as though they could have been valid usage, and KMeans picked them up. These occurred at ~ 6am and ~12pm.</p>
+<h3 id="problemsdifficultiesareasforimprovement">Problems/Difficulties/Areas for Improvement</h3>
+<ol>
+<li>More Data</li>
+</ol>
+<ul>
+<li>I think this is a no-brainer, but is often times the case. The more data (particularly "normal/healthy" data) that can be collected the better. This would allow us to rely less on assumptions. In addition to just more records, including other variables I think could help. For example: ambient readings of the environment, location of the equipment, etc.</li>
+</ul>
+<ol start="2">
+<li>Transforming for High Kurtosis</li>
+</ol>
+<ul>
+<li>For me this is more of an <em>Area for Improvement</em>. After differencing the data, I pointed out that the distribution was Leptokurtic. If there's a way to tranform that into more of a normal distriubution, I think it would have lead to slightly better detection. While I think both methods did good, they seemed a little tight/under-sensitive; i.e the start date is a little late, and the end date is a little early.</li>
+</ul>
+
+
+            </section>
+
+        </article>
+    </main>
+    <footer class="site-footer clearfix">
+        <section class="copyright"><a href="../../">Analyse Everything You See</a> © 2020</section>
+        <section class="poweredby">Proudly published with <a href="https://ghost.org">Ghost</a></section>
+    </footer>
+</body>

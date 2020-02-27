@@ -1,19 +1,434 @@
-<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" version="2.0"><channel><title>Analyse Everything You See</title><description>Thoughts, stories and ideas.</description><link>http://localhost:2368/</link><image><url>http://localhost:2368/favicon.png</url><title>Analyse Everything You See</title><link>http://localhost:2368/</link></image><generator>Ghost 3.8</generator><lastBuildDate>Wed, 26 Feb 2020 03:08:47 GMT</lastBuildDate><atom:link href="http://localhost:2368/rss/" rel="self" type="application/rss+xml"/><ttl>60</ttl><item><title>Test Post</title><description>&lt;!--kg-card-begin: markdown--&gt;&lt;h1 id="thisisprettycool"&gt;This is pretty cool&lt;/h1&gt;
-&lt;p&gt;I could get the hang of this.&lt;/p&gt;
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" version="2.0"><channel><title>Analyse Everything You See</title><description>Thoughts, stories and ideas.</description><link>http://localhost:2368/</link><image><url>http://localhost:2368/favicon.png</url><title>Analyse Everything You See</title><link>http://localhost:2368/</link></image><generator>Ghost 3.8</generator><lastBuildDate>Thu, 27 Feb 2020 06:41:15 GMT</lastBuildDate><atom:link href="http://localhost:2368/rss/" rel="self" type="application/rss+xml"/><ttl>60</ttl><item><title>Detecting Power Usage</title><description>In this post, I had some time series data that was measuring electrical outlet usage. The goal was to detect periods of consumption.</description><link>http://localhost:2368/detecting-power-usage/</link><guid isPermaLink="false">5e572ecf63bbcf0c0ec7ab7a</guid><category>R</category><category>Time Series</category><category>Machine Learning</category><dc:creator>Gary</dc:creator><pubDate>Thu, 27 Feb 2020 03:35:28 GMT</pubDate><media:content url="http://localhost:2368/content/images/2020/02/electricity.jpg" medium="image"/><content:encoded>&lt;!--kg-card-begin: markdown--&gt;&lt;h2 id="problemstatement"&gt;Problem Statement&lt;/h2&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;img src="http://localhost:2368/content/images/2020/02/electricity.jpg" alt="Detecting Power Usage"&gt;&lt;p&gt;Detect episodes of usage within the sample of data provided, with start and stop timestamps.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Show the original data with the usage episodes marked for easy comparison.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Documentation regarding algorithms, data prep steps, and transformations to solve 1 &amp;amp; 2. Describe any problems encountered or stumbling blocks in this kind of analysis.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id="setup"&gt;Setup&lt;/h2&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;rm(list=ls())
+options(warn=-1)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3 id="loadlibraries"&gt;Load libraries&lt;/h3&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;library(dplyr) # data manipulation
+library(tidyr) # reshaping data
+library(ggplot2) # visualizations
+library(gridExtra) # arranging visualizations
+library(lubridate) # working with date-time
+library(readr) # reading/writing data
+library(zoo) # working with time-series data
+library(forecast) # useful time-series analytics
+library(infer) # applying statistical inference
+library(factoextra) # easily applying kmeans elbow method plotting
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h3 id="readandviewthedata"&gt;Read and View the Data&lt;/h3&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;df = readr::read_csv(&amp;quot;data-sample.csv&amp;quot;)
+
+head(df)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;table&gt;
+&lt;caption&gt;A tibble: 6 × 2&lt;/caption&gt;
+&lt;thead&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;timestamp&lt;/th&gt;&lt;th scope="col"&gt;power&lt;/th&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;&amp;lt;chr&amp;gt;&lt;/th&gt;&lt;th scope="col"&gt;&amp;lt;dbl&amp;gt;&lt;/th&gt;&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:00:00 EDT&lt;/td&gt;&lt;td&gt;27.41&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:01:00 EDT&lt;/td&gt;&lt;td&gt;27.40&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:02:00 EDT&lt;/td&gt;&lt;td&gt;27.42&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:03:00 EDT&lt;/td&gt;&lt;td&gt;27.42&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:04:00 EDT&lt;/td&gt;&lt;td&gt;27.42&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:05:00 EDT&lt;/td&gt;&lt;td&gt;27.43&lt;/td&gt;&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;One of the first things I noticed is that the timestamps have been read in as a character vector. Let's change that to the appropriate data type.&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;df = df %&amp;gt;%
+  mutate(timestamp = ymd_hms(timestamp, tz = &amp;quot;US/Eastern&amp;quot;))
+
+head(df)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;table&gt;
+&lt;caption&gt;A tibble: 6 × 2&lt;/caption&gt;
+&lt;thead&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;timestamp&lt;/th&gt;&lt;th scope="col"&gt;power&lt;/th&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;&amp;lt;dttm&amp;gt;&lt;/th&gt;&lt;th scope="col"&gt;&amp;lt;dbl&amp;gt;&lt;/th&gt;&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:00:00&lt;/td&gt;&lt;td&gt;27.41&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:01:00&lt;/td&gt;&lt;td&gt;27.40&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:02:00&lt;/td&gt;&lt;td&gt;27.42&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:03:00&lt;/td&gt;&lt;td&gt;27.42&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:04:00&lt;/td&gt;&lt;td&gt;27.42&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 00:05:00&lt;/td&gt;&lt;td&gt;27.43&lt;/td&gt;&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Now that our data is in the right format, let's move onto some EDA (Exploratory Data Analysis).&lt;/p&gt;
+&lt;h2 id="exploration"&gt;Exploration&lt;/h2&gt;
+&lt;h3 id="visualizingthedata"&gt;Visualizing the Data&lt;/h3&gt;
+&lt;p&gt;First we will visualize the data to get a clear picture of what we're working with&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;df %&amp;gt;%
+  ggplot(aes(x = timestamp, y = power)) +
+  geom_line() +
+  ggtitle(&amp;quot;Power Consumption over a 24hr Period&amp;quot;)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_9_0.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;p&gt;As mentioned in the exercise, we can see that the power stabilizes at 3 different levels. These &amp;quot;stable&amp;quot; periods are referred to as idle/background consumption. In addition to idle consumption, there also seem to be 2 other features that appear:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Small spikes/noise of about +/- 1 watt&lt;/li&gt;
+&lt;/ol&gt;
 &lt;ul&gt;
-&lt;li&gt;Yeh for sure&lt;/li&gt;
+&lt;li&gt;This could be valid usage, or could also be heavier noise occurring during idle consumption&lt;/li&gt;
 &lt;/ul&gt;
-&lt;!--kg-card-end: markdown--&gt;</description><link>http://localhost:2368/test-post/</link><guid isPermaLink="false">5e55dac6948335078ac2ac6d</guid><dc:creator>aeys</dc:creator><pubDate>Wed, 26 Feb 2020 02:58:40 GMT</pubDate><content:encoded>&lt;!--kg-card-begin: markdown--&gt;&lt;h1 id="thisisprettycool"&gt;This is pretty cool&lt;/h1&gt;
-&lt;p&gt;I could get the hang of this.&lt;/p&gt;
+&lt;ol start="2"&gt;
+&lt;li&gt;Large spikes varying about 10-12 watts&lt;/li&gt;
+&lt;/ol&gt;
 &lt;ul&gt;
-&lt;li&gt;Yeh for sure&lt;/li&gt;
+&lt;li&gt;These look like valid usage episodes&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="assumptions"&gt;Assumptions&lt;/h3&gt;
+&lt;p&gt;Now that I have had the opportunit to briefly look at the data, I'm going to make some assumptions before moving forward.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;The data is a &lt;strong&gt;representative sample&lt;/strong&gt; of the population.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;The small spikes are noise in idle consumption.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;The large spikes are &lt;strong&gt;valid&lt;/strong&gt; usage episodes and what should be targeted for detection.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3 id="describingthedata"&gt;Describing the Data&lt;/h3&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;hist = df %&amp;gt;%
+  ggplot(aes(power)) +
+  geom_histogram()
+
+dens = df %&amp;gt;%
+  ggplot(aes(power)) +
+  geom_density()
+
+box = df %&amp;gt;%
+  ggplot(aes(x = 1, y = power)) +
+  geom_boxplot()
+
+summ = summary(df %&amp;gt;% select(-timestamp))
+
+grid.arrange(hist, box, dens, tableGrob(summ), nrow = 2)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_11_1.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;p&gt;As expected, the histogram and density plots show the shape of the data where the data clusters at the 3 different levels that the idle consumption bounces to. What is a bit unexpected, though, is how no outliers are showing up in the boxplot. I have a hunch that if we look at the spread of data in hourly windows, we would start to see outliers appear. Let's quickly see.&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;# Parse the timestamps
+df_broken = df %&amp;gt;%
+  mutate_at(vars(timestamp), funs(year, month, day, hour))
+
+df_broken %&amp;gt;%
+  ggplot(aes(x = as.factor(hour), y = power)) +
+  geom_boxplot() +
+  xlab(&amp;quot;Hours of the Day&amp;quot;) +
+  ggtitle(&amp;quot;Hourly boxplots&amp;quot;)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_13_0.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;p&gt;Now this definitely helps a bit more. We can clearly see the idle consumption levels, and also varying ranges of outliers. This is particularly useful for testing statistical significance.&lt;/p&gt;
+&lt;h3 id="transformingthedata"&gt;Transforming the Data&lt;/h3&gt;
+&lt;p&gt;We can see a clear downward trend of the idle consumption (and overall data) over time which could make detection a bit more complex. However, we can transform the data by differencing it to see if this makes the data more stationary and removes the trend&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;df_diff = df %&amp;gt;%
+  mutate(power_diff = power - lag(power))
+
+df_diff %&amp;gt;%
+  gather(&amp;quot;key&amp;quot;, &amp;quot;value&amp;quot;, -timestamp) %&amp;gt;%
+  ggplot(aes(x = timestamp, y = value)) +
+  geom_line() +
+  geom_smooth(method = &amp;quot;lm&amp;quot;, se = FALSE) +
+  facet_grid(key~., scales = &amp;quot;free&amp;quot;) +
+  ylab(&amp;quot;watts&amp;quot;) +
+  ggtitle(&amp;quot;Power vs Power Differencing&amp;quot;)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_15_0.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;p&gt;Power differenced is much more stable, and will prove much easier to work with. Let's re-do the histogram.&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;p1 = df_diff %&amp;gt;%
+  ggplot(aes(power_diff)) +
+  geom_histogram() +
+  xlab(&amp;quot;power diff&amp;quot;)
+
+p2 = df_diff %&amp;gt;%
+  ggplot(aes(power_diff)) +
+  geom_histogram() +
+  xlim(c(-0.1,0.1)) +
+  xlab(&amp;quot;power diff&amp;quot;) +
+  ggtitle(&amp;quot;Zoomed-In&amp;quot;)
+  
+
+grid.arrange(p1, p2, nrow = 1)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_17_1.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;p&gt;We can see the differenced background noise consumption (tall peak) is pretty symmetrical (shown better in the plot to the right) and that it fluctuates within about +/- 0.25 of its previous value at times.&lt;/p&gt;
+&lt;p&gt;This is a &lt;strong&gt;VERY&lt;/strong&gt; Leptokurtic distribution. It's almost uniform. While this could pose some challenges for different statistical techniques, we will carry forward nonetheless to see if that is the case as the data is much more &amp;quot;normal-like&amp;quot; than prior to differencing.&lt;/p&gt;
+&lt;p&gt;Now that our data is more &amp;quot;normal-like&amp;quot;, we can attempt to describe it with some stats. Namely the 2 that would describe it best are:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;The mean for its central tendency&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;The standard deviation for its spread&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Instead of getting these values straight-up, we can potentially get more value out of how they change over time. To do this I'll use an hour long window that will roll every minute over the &lt;strong&gt;Power Difference&lt;/strong&gt; collecting the &lt;em&gt;mean&lt;/em&gt; and &lt;em&gt;standard deviation&lt;/em&gt;.&lt;/p&gt;
+&lt;p&gt;At this point I am also going to transform the Power Difference by taking the absolute value of it. If we refer back to the 3rd assumption, that we are to detect the large spikes, then if a large spike up would denote the start of a usage period, a large spike down would mean the end of the period. For this analysis, I'm only going to be concerned with the magnitude of the change. (It's possible that direction could be useful if used correctly)&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;# Convert power difference to absolute value
+df_diff$power_diff = abs(df_diff$power_diff)
+
+# Convert data to time-series object
+df_diff_ts = zoo(df_diff$power_diff, order.by = df_diff$timestamp)
+
+# Calculate rollilng stats
+df_diff$mean_diff = rollapply(df_diff_ts, width = 60, FUN = mean, fill = NA)
+df_diff$sd_diff = rollapply(df_diff_ts, width = 60, FUN = sd, fill = NA)
+
+# Renaming the variable names for ordering of plot and turning the mean_diff and sd_diff back to numeric data types
+df_diff = df_diff %&amp;gt;%
+  mutate_at(vars(mean_diff, sd_diff), as.numeric)
+  
+
+df_diff %&amp;gt;%
+  rename(
+    &amp;quot;a_power&amp;quot;=power,
+    &amp;quot;b_power_diff&amp;quot;=power_diff,
+    &amp;quot;c_mean_diff&amp;quot;=mean_diff,
+    &amp;quot;d_sd_diff&amp;quot;=sd_diff
+  ) %&amp;gt;%
+  gather(&amp;quot;key&amp;quot;, &amp;quot;value&amp;quot;, -timestamp) %&amp;gt;%
+  ggplot(aes(x = timestamp, y = value)) +
+  geom_line() +
+  facet_grid(key~., scales = &amp;quot;free&amp;quot;) +
+  ylab(&amp;quot;watts&amp;quot;) +
+  ggtitle(&amp;quot;Rolling Mean &amp;amp; Std Dev on Power Difference&amp;quot;)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_19_0.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;h2 id="detectingusage"&gt;Detecting Usage&lt;/h2&gt;
+&lt;p&gt;Now that we have several different views of our data, let's look to see if we can use them to detect when usage occurs. I think setting thresholds is a logical &amp;amp; simple first step to seeing if it can get the job done.&lt;/p&gt;
+&lt;h3 id="settingthresholdsusinginferentialstatistics"&gt;Setting Thresholds Using Inferential Statistics&lt;/h3&gt;
+&lt;p&gt;Going back to our assumption #1 that the data is a &lt;strong&gt;representative sample&lt;/strong&gt;, we can use it to infer what the mean and standard deviation of the population could be. This is performed by repeatedly sampling the data &lt;em&gt;with replacement&lt;/em&gt;, calculating a stat across each bootsrap, and forming the &lt;em&gt;Null Distribution&lt;/em&gt;. From there we can put confidence intervals around and use the intervals as our thresholds.&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;# Get overall stats of absolute power difference
+overall_stats = df_diff %&amp;gt;%
+  summarise(mean = mean(power_diff, na.rm = TRUE),
+            sd = sd(power_diff, na.rm = TRUE))
+
+mean_diff_overall = overall_stats %&amp;gt;% pull(mean)
+sd_diff_overall = overall_stats %&amp;gt;% pull(sd)
+
+# Create null distributions
+mean_diff_null_distn = df_diff %&amp;gt;%
+  specify(response = power_diff) %&amp;gt;%
+  hypothesize(null = &amp;quot;point&amp;quot;, mu = mean_diff_overall) %&amp;gt;%
+  generate(reps = 1000, type = &amp;quot;bootstrap&amp;quot;) %&amp;gt;%
+  calculate(stat = &amp;quot;mean&amp;quot;)
+
+sd_diff_null_distn = df_diff %&amp;gt;%
+  specify(response = power_diff) %&amp;gt;%
+  hypothesize(null = &amp;quot;point&amp;quot;, sigma = sd_diff_overall) %&amp;gt;%
+  generate(reps = 1000, type = &amp;quot;bootstrap&amp;quot;) %&amp;gt;%
+  calculate(stat = &amp;quot;sd&amp;quot;)
+
+# Get confidence intervals - use 97.5% as we are only concerned with values that are significantly larger
+ci_mean = mean_diff_null_distn %&amp;gt;% get_ci() %&amp;gt;% pull(`97.5%`)
+ci_sd = sd_diff_null_distn %&amp;gt;% get_ci() %&amp;gt;% pull(`97.5%`)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Now that we have our thresholds let's apply them and see how we did.&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;df_diff_usage = df_diff %&amp;gt;%
+  mutate(usage = ifelse((power_diff &amp;gt; 2.5 &amp;amp; mean_diff &amp;gt; ci_mean &amp;amp; sd_diff &amp;gt; ci_sd), TRUE, FALSE))
+
+df_diff_usage %&amp;gt;%
+  rename(
+    &amp;quot;a_power&amp;quot;=power,
+    &amp;quot;b_power_diff&amp;quot;=power_diff,
+    &amp;quot;c_mean_diff&amp;quot;=mean_diff,
+    &amp;quot;d_sd_diff&amp;quot;=sd_diff
+  ) %&amp;gt;%
+  gather(&amp;quot;key&amp;quot;, &amp;quot;value&amp;quot;, -timestamp, -usage) %&amp;gt;%
+  ggplot(aes(x = timestamp, y = value)) +
+  geom_vline(xintercept = df_diff_usage$timestamp[which(df_diff_usage$usage)], color = &amp;quot;red&amp;quot;) +
+  geom_line() +
+  facet_grid(key ~ ., scales = &amp;quot;free&amp;quot;) +
+  ylab(&amp;quot;watts&amp;quot;) +
+  ggtitle(&amp;quot;Statistical Inference&amp;quot;)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_23_0.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;pre&gt;&lt;code class="language-r"&gt;start = c()
+end = c()
+
+df_diff_usage$usage[1] = FALSE
+
+for(i in 2:(nrow(df_diff_usage) - 1)) {
+  if(df_diff_usage$usage[i]) {
+    if((df_diff_usage$usage[i-1] == TRUE &amp;amp; df_diff_usage$usage[i+1] == TRUE)) {
+      next
+    } else if ((df_diff_usage$usage[i-1] == FALSE &amp;amp; df_diff_usage$usage[i+1] == TRUE)) {
+      start[[i]] = df_diff_usage$timestamp[i]
+    } else if ((df_diff_usage$usage[i-1] == TRUE &amp;amp; df_diff_usage$usage[i+1] == FALSE)) {
+      end[[i]] = df_diff_usage$timestamp[i]
+    } else {
+      start[[i]] = df_diff_usage$timestamp[i]
+      end[[i]] = df_diff_usage$timestamp[i]
+    }
+      
+  } else {
+    next
+  }
+}
+
+start = as_datetime(start[complete.cases(start)], tz = &amp;quot;US/Eastern&amp;quot;)
+end = as_datetime(end[complete.cases(end)], tz = &amp;quot;US/Eastern&amp;quot;)
+
+final_df = data.frame(start = start, end = end) %&amp;gt;%
+  mutate(usage_length = end - start,
+         usage_length = ifelse(usage_length == 0, &amp;quot;&amp;lt;60 secs&amp;quot;, usage_length))
+
+final_df
+&lt;/code&gt;&lt;/pre&gt;
+&lt;table&gt;
+&lt;caption&gt;A data.frame: 18 × 3&lt;/caption&gt;
+&lt;thead&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;start&lt;/th&gt;&lt;th scope="col"&gt;end&lt;/th&gt;&lt;th scope="col"&gt;usage_length&lt;/th&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;&amp;lt;dttm&amp;gt;&lt;/th&gt;&lt;th scope="col"&gt;&amp;lt;dttm&amp;gt;&lt;/th&gt;&lt;th scope="col"&gt;&amp;lt;chr&amp;gt;&lt;/th&gt;&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 09:32:00&lt;/td&gt;&lt;td&gt;2019-06-14 09:33:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 09:35:00&lt;/td&gt;&lt;td&gt;2019-06-14 09:36:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 09:38:00&lt;/td&gt;&lt;td&gt;2019-06-14 09:38:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:00:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:00:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:03:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:03:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:07:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:07:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:10:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:13:00&lt;/td&gt;&lt;td&gt;180     &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:15:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:15:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 13:44:00&lt;/td&gt;&lt;td&gt;2019-06-14 13:45:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 13:49:00&lt;/td&gt;&lt;td&gt;2019-06-14 13:51:00&lt;/td&gt;&lt;td&gt;120     &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 13:55:00&lt;/td&gt;&lt;td&gt;2019-06-14 13:56:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:00:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:00:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:51:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:52:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:54:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:54:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:56:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:57:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:59:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:59:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 16:26:00&lt;/td&gt;&lt;td&gt;2019-06-14 16:26:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 16:29:00&lt;/td&gt;&lt;td&gt;2019-06-14 16:32:00&lt;/td&gt;&lt;td&gt;180     &lt;/td&gt;&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h3 id="usingunsupervisedlearning"&gt;Using Unsupervised Learning&lt;/h3&gt;
+&lt;p&gt;I feel that the above is a sound method for this exercise, however, I am curious to see how an algorithm like KMeans could perform against this data. I will let it cluster the data against the transformations I created, i.e power_diff, mean_diff, and sd_diff.&lt;/p&gt;
+&lt;pre&gt;&lt;code class="language-r"&gt;df_km_usage = df_diff %&amp;gt;%
+  filter(!is.na(mean_diff),
+         !is.na(sd_diff))
+
+set.seed(0415)
+
+# Find optimal number of clusters using the elbow method
+fviz_nbclust(df_km_usage %&amp;gt;% select(-timestamp, -power), kmeans, method = &amp;quot;wss&amp;quot;)
+
+real_k = kmeans(df_km_usage %&amp;gt;% select(-timestamp, -power), centers = 3)
+df_km_usage$cluster = real_k$cluster
+
+df_km_usage %&amp;gt;%
+  rename(
+    &amp;quot;a_power&amp;quot;=power,
+    &amp;quot;b_power_diff&amp;quot;=power_diff,
+    &amp;quot;c_mean_diff&amp;quot;=mean_diff,
+    &amp;quot;d_sd_diff&amp;quot;=sd_diff
+    # &amp;quot;e_usage&amp;quot;=usage
+  ) %&amp;gt;%
+  gather(&amp;quot;key&amp;quot;, &amp;quot;value&amp;quot;, -timestamp, -cluster) %&amp;gt;%
+  ggplot(aes(x=timestamp, y = value)) +
+  geom_vline(xintercept = df_km_usage$timestamp[df_km_usage$cluster == 2], col = &amp;quot;red&amp;quot;) +
+  geom_line() +
+  facet_grid(key~., scales=&amp;quot;free&amp;quot;) +
+  ylab(&amp;quot;watts&amp;quot;) +
+  ggtitle(&amp;quot;KMeans Usage Detection&amp;quot;)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_26_0.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="http://localhost:2368/content/images/2020/02/output_26_1.png" class="kg-image" alt="Detecting Power Usage"&gt;&lt;/figure&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;pre&gt;&lt;code class="language-r"&gt;df_km_us = df_km_usage %&amp;gt;%
+  mutate(usage = ifelse(cluster == 2, TRUE, FALSE))
+
+start_k = c()
+end_k = c()
+
+for(i in 2:(nrow(df_km_us) - 1)) {
+  if(df_km_us$usage[i]) {
+    
+    if((df_km_us$usage[i-1] == TRUE &amp;amp; df_km_us$usage[i+1] == TRUE)) {
+      next
+    }
+    else if ((df_km_us$usage[i-1] == FALSE &amp;amp; df_km_us$usage[i+1] == TRUE)) {
+      start_k[[i]] = df_km_us$timestamp[i]
+    } else if ((df_km_us$usage[i-1] == TRUE &amp;amp; df_km_us$usage[i+1] == FALSE)) {
+      end_k[[i]] = df_km_us$timestamp[i]
+    } else {
+      start_k[[i]] = df_km_us$timestamp[i]
+      end_k[[i]] = df_km_us$timestamp[i]
+    }
+      
+  } else {
+    next
+  }
+}
+
+start_k = as_datetime(start_k[complete.cases(start_k)], tz = &amp;quot;US/Eastern&amp;quot;)
+end_k = as_datetime(end_k[complete.cases(end_k)], tz = &amp;quot;US/Eastern&amp;quot;)
+
+final_df_k = data.frame(start_k = start_k, end_k = end_k) %&amp;gt;%
+  mutate(usage_length_k = end_k - start_k,
+         usage_length_k = ifelse(usage_length_k == 0, &amp;quot;&amp;lt;60 secs&amp;quot;, usage_length_k))
+
+final_df_k
+&lt;/code&gt;&lt;/pre&gt;
+&lt;table&gt;
+&lt;caption&gt;A data.frame: 20 × 3&lt;/caption&gt;
+&lt;thead&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;start_k&lt;/th&gt;&lt;th scope="col"&gt;end_k&lt;/th&gt;&lt;th scope="col"&gt;usage_length_k&lt;/th&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;th scope="col"&gt;&amp;lt;dttm&amp;gt;&lt;/th&gt;&lt;th scope="col"&gt;&amp;lt;dttm&amp;gt;&lt;/th&gt;&lt;th scope="col"&gt;&amp;lt;chr&amp;gt;&lt;/th&gt;&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 06:02:00&lt;/td&gt;&lt;td&gt;2019-06-14 06:02:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 09:32:00&lt;/td&gt;&lt;td&gt;2019-06-14 09:33:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 09:35:00&lt;/td&gt;&lt;td&gt;2019-06-14 09:36:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 09:38:00&lt;/td&gt;&lt;td&gt;2019-06-14 09:38:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:00:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:00:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:03:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:03:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:07:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:07:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:10:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:12:00&lt;/td&gt;&lt;td&gt;120     &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 10:15:00&lt;/td&gt;&lt;td&gt;2019-06-14 10:15:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 11:54:00&lt;/td&gt;&lt;td&gt;2019-06-14 11:55:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 13:44:00&lt;/td&gt;&lt;td&gt;2019-06-14 13:45:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 13:49:00&lt;/td&gt;&lt;td&gt;2019-06-14 13:51:00&lt;/td&gt;&lt;td&gt;120     &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 13:55:00&lt;/td&gt;&lt;td&gt;2019-06-14 13:56:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:00:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:00:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:51:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:52:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:54:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:54:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:56:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:57:00&lt;/td&gt;&lt;td&gt;60      &lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 14:59:00&lt;/td&gt;&lt;td&gt;2019-06-14 14:59:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 16:26:00&lt;/td&gt;&lt;td&gt;2019-06-14 16:26:00&lt;/td&gt;&lt;td&gt;&amp;lt;60 secs&lt;/td&gt;&lt;/tr&gt;
+	&lt;tr&gt;&lt;td&gt;2019-06-14 16:29:00&lt;/td&gt;&lt;td&gt;2019-06-14 16:32:00&lt;/td&gt;&lt;td&gt;180     &lt;/td&gt;&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="conclusion"&gt;Conclusion&lt;/h2&gt;
+&lt;h3 id="methodologydecision"&gt;Methodology Decision&lt;/h3&gt;
+&lt;p&gt;I think that both methods worked pretty well with the data. I believe there are pros and cons to both as far as I can see.&lt;/p&gt;
+&lt;p&gt;I feel as though using statistical inference allows for more flexibility from a tuning perspective since you can tweak the thresholds, etc. However, at the same time that is a manual process that would need to be monitored/revisited.&lt;/p&gt;
+&lt;p&gt;With KMeans, the opposite is somewhat true. There's less threshold tweaking involved, and more hyperparameter tuning to find which combinations optimally detect usage.&lt;/p&gt;
+&lt;p&gt;If I had to choose which one I think did better in this exercise (w/o knowing the right answer) I would choose the &lt;strong&gt;KMeans&lt;/strong&gt; algorithm. While both methods captured the large spikes, there were some other medium-sized spikes that occurred in the data that seemd as though they could have been valid usage, and KMeans picked them up. These occurred at ~ 6am and ~12pm.&lt;/p&gt;
+&lt;h3 id="problemsdifficultiesareasforimprovement"&gt;Problems/Difficulties/Areas for Improvement&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;More Data&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul&gt;
+&lt;li&gt;I think this is a no-brainer, but is often times the case. The more data (particularly &amp;quot;normal/healthy&amp;quot; data) that can be collected the better. This would allow us to rely less on assumptions. In addition to just more records, including other variables I think could help. For example: ambient readings of the environment, location of the equipment, etc.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;ol start="2"&gt;
+&lt;li&gt;Transforming for High Kurtosis&lt;/li&gt;
+&lt;/ol&gt;
+&lt;ul&gt;
+&lt;li&gt;For me this is more of an &lt;em&gt;Area for Improvement&lt;/em&gt;. After differencing the data, I pointed out that the distribution was Leptokurtic. If there's a way to tranform that into more of a normal distriubution, I think it would have lead to slightly better detection. While I think both methods did good, they seemed a little tight/under-sensitive; i.e the start date is a little late, and the end date is a little early.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;!--kg-card-end: markdown--&gt;</content:encoded></item><item><title>Welcome to Ghost</title><description>Welcome, it's great to have you here.
-We know that first impressions are important, so we've populated your new site with some initial getting started posts that will help you get familiar with everything in no time.</description><link>http://localhost:2368/welcome/</link><guid isPermaLink="false">5e55d977948335078ac2ab68</guid><category>Getting Started</category><dc:creator>Ghost</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:40 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/welcome-to-ghost.png" medium="image"/><content:encoded>&lt;h2 id="a-few-things-you-should-know"&gt;&lt;strong&gt;A few things you should know&lt;/strong&gt;&lt;/h2&gt;&lt;ol&gt;&lt;li&gt;Ghost is designed for ambitious, professional publishers who want to actively build a business around their content. That's who it works best for. &lt;/li&gt;&lt;li&gt;The entire platform can be modified and customised to suit your needs. It's very powerful, but does require some knowledge of code. Ghost is not necessarily a good platform for beginners or people who just want a simple personal blog. &lt;/li&gt;&lt;li&gt;It's possible to work with all your favourite tools and apps with hundreds of &lt;a href="https://ghost.org/integrations/"&gt;integrations&lt;/a&gt; to speed up your workflows, connect email lists, build communities and much more.&lt;/li&gt;&lt;/ol&gt;&lt;h2 id="behind-the-scenes"&gt;Behind the scenes&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/welcome-to-ghost.png" alt="Welcome to Ghost"&gt;&lt;p&gt;Ghost is made by an independent non-profit organisation called the Ghost Foundation. We are 100% self funded by revenue from our &lt;a href="https://ghost.org/pricing"&gt;Ghost(Pro)&lt;/a&gt; service, and every penny we make is re-invested into funding further development of free, open source technology for modern publishing.&lt;/p&gt;&lt;p&gt;The version of Ghost you are looking at right now would not have been made possible without generous contributions from the open source &lt;a href="https://github.com/TryGhost"&gt;community&lt;/a&gt;.&lt;/p&gt;&lt;h2 id="next-up-the-editor"&gt;Next up, the editor&lt;/h2&gt;&lt;p&gt;The main thing you'll want to read about next is probably: &lt;a href="http://localhost:2368/the-editor/"&gt;the Ghost editor&lt;/a&gt;. This is where the good stuff happens.&lt;/p&gt;&lt;blockquote&gt;By the way, once you're done reading, you can simply delete the default Ghost user from your team to remove all of these introductory posts! &lt;/blockquote&gt;</content:encoded></item><item><title>Writing posts with Ghost ✍️</title><description>Discover familiar formatting options in a functional toolbar and the ability to add dynamic content seamlessly.</description><link>http://localhost:2368/the-editor/</link><guid isPermaLink="false">5e55d977948335078ac2ab66</guid><category>Getting Started</category><dc:creator>Ghost</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:39 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/writing-posts-with-ghost.png" medium="image"/><content:encoded>&lt;h2 id="just-start-writing"&gt;Just start writing&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/writing-posts-with-ghost.png" alt="Writing posts with Ghost ✍️"&gt;&lt;p&gt;Ghost has a powerful visual editor with familiar formatting options, as well as the ability to add dynamic content.&lt;/p&gt;&lt;p&gt;Select your text to add formatting such as headers or to create links. Or use Markdown shortcuts to do the work for you - if that's your thing. &lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v2.0.0/images/formatting-editor-demo.gif" class="kg-image" alt="Writing posts with Ghost ✍️"&gt;&lt;/figure&gt;&lt;h2 id="rich-editing-at-your-fingertips"&gt;Rich editing at your fingertips&lt;/h2&gt;&lt;p&gt;The editor can also handle rich media objects, called &lt;strong&gt;cards&lt;/strong&gt;, which can be organised and re-ordered using drag and drop. &lt;/p&gt;&lt;p&gt;You can insert a card either by clicking the  &lt;code&gt;+&lt;/code&gt;  button, or typing  &lt;code&gt;/&lt;/code&gt;  on a new line to search for a particular card. This allows you to efficiently insert&lt;strong&gt; images&lt;/strong&gt;, &lt;strong&gt;markdown&lt;/strong&gt;, &lt;strong&gt;html, embeds &lt;/strong&gt;and more.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;For example&lt;/strong&gt;:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Insert a video from YouTube directly by pasting the URL&lt;/li&gt;&lt;li&gt;Create unique content like buttons or forms using the HTML card&lt;/li&gt;&lt;li&gt;Need to share some code? Embed code blocks directly &lt;/li&gt;&lt;/ul&gt;&lt;pre&gt;&lt;code&gt;&amp;lt;header class="site-header outer"&amp;gt;
+We know that first impressions are important, so we've populated your new site with some initial getting started posts that will help you get familiar with everything in no time.</description><link>http://localhost:2368/welcome/</link><guid isPermaLink="false">5e55d977948335078ac2ab68</guid><category>Getting Started</category><dc:creator>Gary</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:40 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/welcome-to-ghost.png" medium="image"/><content:encoded>&lt;h2 id="a-few-things-you-should-know"&gt;&lt;strong&gt;A few things you should know&lt;/strong&gt;&lt;/h2&gt;&lt;ol&gt;&lt;li&gt;Ghost is designed for ambitious, professional publishers who want to actively build a business around their content. That's who it works best for. &lt;/li&gt;&lt;li&gt;The entire platform can be modified and customised to suit your needs. It's very powerful, but does require some knowledge of code. Ghost is not necessarily a good platform for beginners or people who just want a simple personal blog. &lt;/li&gt;&lt;li&gt;It's possible to work with all your favourite tools and apps with hundreds of &lt;a href="https://ghost.org/integrations/"&gt;integrations&lt;/a&gt; to speed up your workflows, connect email lists, build communities and much more.&lt;/li&gt;&lt;/ol&gt;&lt;h2 id="behind-the-scenes"&gt;Behind the scenes&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/welcome-to-ghost.png" alt="Welcome to Ghost"&gt;&lt;p&gt;Ghost is made by an independent non-profit organisation called the Ghost Foundation. We are 100% self funded by revenue from our &lt;a href="https://ghost.org/pricing"&gt;Ghost(Pro)&lt;/a&gt; service, and every penny we make is re-invested into funding further development of free, open source technology for modern publishing.&lt;/p&gt;&lt;p&gt;The version of Ghost you are looking at right now would not have been made possible without generous contributions from the open source &lt;a href="https://github.com/TryGhost"&gt;community&lt;/a&gt;.&lt;/p&gt;&lt;h2 id="next-up-the-editor"&gt;Next up, the editor&lt;/h2&gt;&lt;p&gt;The main thing you'll want to read about next is probably: &lt;a href="http://localhost:2368/the-editor/"&gt;the Ghost editor&lt;/a&gt;. This is where the good stuff happens.&lt;/p&gt;&lt;blockquote&gt;By the way, once you're done reading, you can simply delete the default Ghost user from your team to remove all of these introductory posts! &lt;/blockquote&gt;</content:encoded></item><item><title>Writing posts with Ghost ✍️</title><description>Discover familiar formatting options in a functional toolbar and the ability to add dynamic content seamlessly.</description><link>http://localhost:2368/the-editor/</link><guid isPermaLink="false">5e55d977948335078ac2ab66</guid><category>Getting Started</category><dc:creator>Gary</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:39 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/writing-posts-with-ghost.png" medium="image"/><content:encoded>&lt;h2 id="just-start-writing"&gt;Just start writing&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/writing-posts-with-ghost.png" alt="Writing posts with Ghost ✍️"&gt;&lt;p&gt;Ghost has a powerful visual editor with familiar formatting options, as well as the ability to add dynamic content.&lt;/p&gt;&lt;p&gt;Select your text to add formatting such as headers or to create links. Or use Markdown shortcuts to do the work for you - if that's your thing. &lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v2.0.0/images/formatting-editor-demo.gif" class="kg-image" alt="Writing posts with Ghost ✍️"&gt;&lt;/figure&gt;&lt;h2 id="rich-editing-at-your-fingertips"&gt;Rich editing at your fingertips&lt;/h2&gt;&lt;p&gt;The editor can also handle rich media objects, called &lt;strong&gt;cards&lt;/strong&gt;, which can be organised and re-ordered using drag and drop. &lt;/p&gt;&lt;p&gt;You can insert a card either by clicking the  &lt;code&gt;+&lt;/code&gt;  button, or typing  &lt;code&gt;/&lt;/code&gt;  on a new line to search for a particular card. This allows you to efficiently insert&lt;strong&gt; images&lt;/strong&gt;, &lt;strong&gt;markdown&lt;/strong&gt;, &lt;strong&gt;html, embeds &lt;/strong&gt;and more.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;For example&lt;/strong&gt;:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Insert a video from YouTube directly by pasting the URL&lt;/li&gt;&lt;li&gt;Create unique content like buttons or forms using the HTML card&lt;/li&gt;&lt;li&gt;Need to share some code? Embed code blocks directly &lt;/li&gt;&lt;/ul&gt;&lt;pre&gt;&lt;code&gt;&amp;lt;header class="site-header outer"&amp;gt;
     &amp;lt;div class="inner"&amp;gt;
         {{&amp;gt; "site-nav"}}
     &amp;lt;/div&amp;gt;
-&amp;lt;/header&amp;gt;&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;It's also possible to share links from across the web in a visual way using bookmark cards that automatically render information from a websites meta data. Paste any URL to try it out: &lt;/p&gt;&lt;figure class="kg-card kg-bookmark-card"&gt;&lt;a class="kg-bookmark-container" href="https://ghost.org"&gt;&lt;div class="kg-bookmark-content"&gt;&lt;div class="kg-bookmark-title"&gt;Ghost: The #1 open source headless Node.js CMS&lt;/div&gt;&lt;div class="kg-bookmark-description"&gt;The world’s most popular modern open source publishing platform. A headless Node.js CMS used by Apple, Sky News, Tinder and thousands more. MIT licensed, with 30k+ stars on Github.&lt;/div&gt;&lt;div class="kg-bookmark-metadata"&gt;&lt;img class="kg-bookmark-icon" src="https://ghost.org/icons/icon-512x512.png?v=188b8b6d743c6338ba2eab2e35bab4f5" alt="Writing posts with Ghost ✍️"&gt;&lt;span class="kg-bookmark-publisher"&gt;Ghost&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="kg-bookmark-thumbnail"&gt;&lt;img src="https://ghost.org/images/meta/Ghost.png" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;/a&gt;&lt;/figure&gt;&lt;h2 id="working-with-images-in-posts"&gt;Working with images in posts&lt;/h2&gt;&lt;p&gt;You can add images to your posts in many ways:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Upload from your computer&lt;/li&gt;&lt;li&gt;Click and drag an image into the browser&lt;/li&gt;&lt;li&gt;Paste directly into the editor from your clipboard&lt;/li&gt;&lt;li&gt;Insert using a URL&lt;/li&gt;&lt;/ul&gt;&lt;h3 id="image-sizes"&gt;Image sizes&lt;/h3&gt;&lt;p&gt;Once inserted you can blend images beautifully into your content at different sizes and add captions and alt tags wherever needed.&lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/image-sizes-ghost-editor.png" class="kg-image" alt="Writing posts with Ghost ✍️"&gt;&lt;/figure&gt;&lt;h3 id="image-galleries"&gt;Image galleries&lt;/h3&gt;&lt;p&gt;Tell visual stories using the gallery card to add up to 9 images that will display as a responsive image gallery: &lt;/p&gt;&lt;figure class="kg-card kg-gallery-card kg-width-wide"&gt;&lt;div class="kg-gallery-container"&gt;&lt;div class="kg-gallery-row"&gt;&lt;div class="kg-gallery-image"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/gallery-sample-1.jpg" width="6000" height="4000" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;div class="kg-gallery-image"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/gallery-sample-2.jpg" width="5746" height="3831" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;div class="kg-gallery-image"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/gallery-sample-3.jpg" width="5872" height="3915" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;h3 id="image-optimisation"&gt;Image optimisation&lt;/h3&gt;&lt;p&gt;Ghost will automatically resize and optimise your images with lossless compression. Your posts will be fully optimised for the web without any extra effort on your part.&lt;/p&gt;&lt;h2 id="next-publishing-options"&gt;Next: Publishing Options&lt;/h2&gt;&lt;p&gt;Once your post is looking good, you'll want to use the &lt;a href="http://localhost:2368/publishing-options/"&gt;publishing options&lt;/a&gt; to ensure it gets distributed in the right places, with custom meta data, feature images and more.&lt;/p&gt;</content:encoded></item><item><title>Publishing options</title><description>The Ghost editor post settings menu has everything you need to fully optimise and distribute your content effectively.</description><link>http://localhost:2368/publishing-options/</link><guid isPermaLink="false">5e55d977948335078ac2ab64</guid><category>Getting Started</category><dc:creator>Ghost</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:38 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/publishing-options.png" medium="image"/><content:encoded>&lt;h2 id="distribute-your-content"&gt;Distribute your content&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/publishing-options.png" alt="Publishing options"&gt;&lt;p&gt;Access the post settings menu by clicking the settings icon in the top right hand corner of the editor and discover everything you need to get your content ready for publishing. This is where you can edit things like tags, post URL, publish date and custom meta data.&lt;/p&gt;&lt;h2 id="feature-images-url-excerpts"&gt;Feature images, URL &amp;amp; excerpts&lt;/h2&gt;&lt;p&gt;Insert your post feature image from the very top of the post settings menu. Consider resizing or optimising your image first to ensure it's an appropriate size. Below this, you can set your post URL, publish date and add a custom excerpt.&lt;/p&gt;&lt;h2 id="tags-authors"&gt;Tags &amp;amp; authors&lt;/h2&gt;&lt;p&gt;You can easily add multiple tags and authors to any post to filter and organise the relationships between your content in Ghost.&lt;/p&gt;&lt;h2 id="structured-data-seo"&gt;Structured data &amp;amp; SEO&lt;/h2&gt;&lt;p&gt;There's no need to hard code your meta data. In fact, Ghost will generate default meta data automatically using the content in your post.&lt;/p&gt;&lt;p&gt;Alternatively, you can override this by adding a custom meta title and description, as well as unique information for social media sharing cards on Facebook and Twitter.&lt;/p&gt;&lt;p&gt;It's also possible to set custom canonicals, which is useful for guest posts or curated lists of external links.&lt;/p&gt;&lt;p&gt;Ghost will automatically implement &lt;strong&gt;structured data&lt;/strong&gt; for your publication using JSON-LD to further optimise your content.&lt;/p&gt;&lt;pre&gt;&lt;code&gt;{
+&amp;lt;/header&amp;gt;&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;It's also possible to share links from across the web in a visual way using bookmark cards that automatically render information from a websites meta data. Paste any URL to try it out: &lt;/p&gt;&lt;figure class="kg-card kg-bookmark-card"&gt;&lt;a class="kg-bookmark-container" href="https://ghost.org"&gt;&lt;div class="kg-bookmark-content"&gt;&lt;div class="kg-bookmark-title"&gt;Ghost: The #1 open source headless Node.js CMS&lt;/div&gt;&lt;div class="kg-bookmark-description"&gt;The world’s most popular modern open source publishing platform. A headless Node.js CMS used by Apple, Sky News, Tinder and thousands more. MIT licensed, with 30k+ stars on Github.&lt;/div&gt;&lt;div class="kg-bookmark-metadata"&gt;&lt;img class="kg-bookmark-icon" src="https://ghost.org/icons/icon-512x512.png?v=188b8b6d743c6338ba2eab2e35bab4f5" alt="Writing posts with Ghost ✍️"&gt;&lt;span class="kg-bookmark-publisher"&gt;Ghost&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="kg-bookmark-thumbnail"&gt;&lt;img src="https://ghost.org/images/meta/Ghost.png" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;/a&gt;&lt;/figure&gt;&lt;h2 id="working-with-images-in-posts"&gt;Working with images in posts&lt;/h2&gt;&lt;p&gt;You can add images to your posts in many ways:&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Upload from your computer&lt;/li&gt;&lt;li&gt;Click and drag an image into the browser&lt;/li&gt;&lt;li&gt;Paste directly into the editor from your clipboard&lt;/li&gt;&lt;li&gt;Insert using a URL&lt;/li&gt;&lt;/ul&gt;&lt;h3 id="image-sizes"&gt;Image sizes&lt;/h3&gt;&lt;p&gt;Once inserted you can blend images beautifully into your content at different sizes and add captions and alt tags wherever needed.&lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/image-sizes-ghost-editor.png" class="kg-image" alt="Writing posts with Ghost ✍️"&gt;&lt;/figure&gt;&lt;h3 id="image-galleries"&gt;Image galleries&lt;/h3&gt;&lt;p&gt;Tell visual stories using the gallery card to add up to 9 images that will display as a responsive image gallery: &lt;/p&gt;&lt;figure class="kg-card kg-gallery-card kg-width-wide"&gt;&lt;div class="kg-gallery-container"&gt;&lt;div class="kg-gallery-row"&gt;&lt;div class="kg-gallery-image"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/gallery-sample-1.jpg" width="6000" height="4000" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;div class="kg-gallery-image"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/gallery-sample-2.jpg" width="5746" height="3831" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;div class="kg-gallery-image"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/gallery-sample-3.jpg" width="5872" height="3915" alt="Writing posts with Ghost ✍️"&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/figure&gt;&lt;h3 id="image-optimisation"&gt;Image optimisation&lt;/h3&gt;&lt;p&gt;Ghost will automatically resize and optimise your images with lossless compression. Your posts will be fully optimised for the web without any extra effort on your part.&lt;/p&gt;&lt;h2 id="next-publishing-options"&gt;Next: Publishing Options&lt;/h2&gt;&lt;p&gt;Once your post is looking good, you'll want to use the &lt;a href="http://localhost:2368/publishing-options/"&gt;publishing options&lt;/a&gt; to ensure it gets distributed in the right places, with custom meta data, feature images and more.&lt;/p&gt;</content:encoded></item><item><title>Publishing options</title><description>The Ghost editor post settings menu has everything you need to fully optimise and distribute your content effectively.</description><link>http://localhost:2368/publishing-options/</link><guid isPermaLink="false">5e55d977948335078ac2ab64</guid><category>Getting Started</category><dc:creator>Gary</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:38 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/publishing-options.png" medium="image"/><content:encoded>&lt;h2 id="distribute-your-content"&gt;Distribute your content&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/publishing-options.png" alt="Publishing options"&gt;&lt;p&gt;Access the post settings menu by clicking the settings icon in the top right hand corner of the editor and discover everything you need to get your content ready for publishing. This is where you can edit things like tags, post URL, publish date and custom meta data.&lt;/p&gt;&lt;h2 id="feature-images-url-excerpts"&gt;Feature images, URL &amp;amp; excerpts&lt;/h2&gt;&lt;p&gt;Insert your post feature image from the very top of the post settings menu. Consider resizing or optimising your image first to ensure it's an appropriate size. Below this, you can set your post URL, publish date and add a custom excerpt.&lt;/p&gt;&lt;h2 id="tags-authors"&gt;Tags &amp;amp; authors&lt;/h2&gt;&lt;p&gt;You can easily add multiple tags and authors to any post to filter and organise the relationships between your content in Ghost.&lt;/p&gt;&lt;h2 id="structured-data-seo"&gt;Structured data &amp;amp; SEO&lt;/h2&gt;&lt;p&gt;There's no need to hard code your meta data. In fact, Ghost will generate default meta data automatically using the content in your post.&lt;/p&gt;&lt;p&gt;Alternatively, you can override this by adding a custom meta title and description, as well as unique information for social media sharing cards on Facebook and Twitter.&lt;/p&gt;&lt;p&gt;It's also possible to set custom canonicals, which is useful for guest posts or curated lists of external links.&lt;/p&gt;&lt;p&gt;Ghost will automatically implement &lt;strong&gt;structured data&lt;/strong&gt; for your publication using JSON-LD to further optimise your content.&lt;/p&gt;&lt;pre&gt;&lt;code&gt;{
     "@context": "https://schema.org",
     "@type": "Article",
     "publisher": {
@@ -35,5 +450,5 @@ We know that first impressions are important, so we've populated your new site w
     "description": "The Ghost editor has everything you need to fully optimise your content. This is where you can add tags and authors, feature a post, or turn a post into a page.",
     }
 }
-    &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;You can test that the structured data &lt;a href="https://schema.org/"&gt;schema&lt;/a&gt; on your site is working as it should using &lt;a href="https://search.google.com/structured-data/testing-tool" rel="noreferrer nofollow noopener"&gt;Google’s structured data tool&lt;/a&gt;. &lt;/p&gt;&lt;h2 id="code-injection"&gt;Code injection&lt;/h2&gt;&lt;p&gt;This tool allows you to inject code on a per post or page basis, or across your entire site. This means you can modify CSS, add unique tracking codes, or add other scripts to the head or foot of your publication without making edits to your theme files. &lt;/p&gt;&lt;p&gt;&lt;strong&gt;To add code site-wide&lt;/strong&gt;, use the code injection tool in the main admin menu. This is useful for adding a Google Analytics tracking code, or to start tracking with any other analytics tool.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;To add code to a post or page&lt;/strong&gt;, use the code injection tool within the post settings menu. This is useful if you want to add art direction, scripts or styles that are only applicable to one post or page.&lt;/p&gt;&lt;h2 id="next-admin-settings"&gt;Next: Admin settings&lt;/h2&gt;&lt;p&gt;Now you understand how to create and optimise content, let's explore some &lt;a href="http://localhost:2368/admin-settings/"&gt;admin settings&lt;/a&gt; so you can invite your team and start collaborating.&lt;/p&gt;</content:encoded></item><item><title>Managing admin settings</title><description>There are a couple of things to do next while you're getting set up: making your site private and inviting your team.</description><link>http://localhost:2368/admin-settings/</link><guid isPermaLink="false">5e55d977948335078ac2ab62</guid><category>Getting Started</category><dc:creator>Ghost</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:37 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/admin-settings.png" medium="image"/><content:encoded>&lt;h2 id="make-your-site-private"&gt;Make your site private&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/admin-settings.png" alt="Managing admin settings"&gt;&lt;p&gt;If you've got a publication that you don't want the world to see yet because it's not ready to launch, you can hide your Ghost site behind a basic shared pass-phrase.&lt;/p&gt;&lt;p&gt;You can toggle this preference on at the bottom of Ghost's General Settings:&lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v1.0.0/images/private.png" class="kg-image" alt="Managing admin settings"&gt;&lt;/figure&gt;&lt;p&gt;Ghost will give you a short, randomly generated pass-phrase which you can share with anyone who needs access to the site while you're working on it. While this setting is enabled, all search engine optimisation features will be switched off to help keep your site under the radar.&lt;/p&gt;&lt;p&gt;Do remember though, this is &lt;em&gt;not&lt;/em&gt; secure authentication. You shouldn't rely on this feature for protecting important private data. It's just a simple, shared pass-phrase for some very basic privacy.&lt;/p&gt;&lt;h2 id="invite-your-team"&gt;Invite your team &lt;/h2&gt;&lt;p&gt;Ghost has a number of different user roles for your team:&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Contributors&lt;/strong&gt;&lt;br&gt;This is the base user level in Ghost. Contributors can create and edit their own draft posts, but they are unable to edit drafts of others or publish posts. Contributors are &lt;strong&gt;untrusted&lt;/strong&gt; users with the most basic access to your publication.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;br&gt;Authors are the 2nd user level in Ghost. Authors can write, edit  and publish their own posts. Authors are &lt;strong&gt;trusted&lt;/strong&gt; users. If you don't trust users to be allowed to publish their own posts, they should be set as Contributors.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Editors&lt;/strong&gt;&lt;br&gt;Editors are the 3rd user level in Ghost. Editors can do everything that an Author can do, but they can also edit and publish the posts of others - as well as their own. Editors can also invite new Contributors &amp;amp; Authors to the site.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Administrators&lt;/strong&gt;&lt;br&gt;The top user level in Ghost is Administrator. Again, administrators can do everything that Authors and Editors can do, but they can also edit all site settings and data, not just content. Additionally, administrators have full access to invite, manage or remove any other user of the site.&lt;br&gt;&lt;br&gt;&lt;strong&gt;The Owner&lt;/strong&gt;&lt;br&gt;There is only ever one owner of a Ghost site. The owner is a special user which has all the same permissions as an Administrator, but with two exceptions: The Owner can never be deleted. And in some circumstances the owner will have access to additional special settings if applicable. For example: billing details, if using &lt;a href="https://ghost.org/pricing/"&gt;&lt;strong&gt;Ghost(Pro)&lt;/strong&gt;&lt;/a&gt;.&lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;It's a good idea to ask all of your users to fill out their user profiles, including bio and social links. These will populate rich structured data for posts and generally create more opportunities for themes to fully populate their design.&lt;/em&gt;&lt;/blockquote&gt;&lt;h2 id="next-organising-content"&gt;Next: Organising content&lt;/h2&gt;&lt;p&gt;Find out how to &lt;a href="http://localhost:2368/organising-content/"&gt;organise your content&lt;/a&gt; with sensible tags and authors, or for more advanced configurations, how to create custom content structures using dynamic routing.&lt;/p&gt;</content:encoded></item><item><title>Organising your content</title><description>Ghost has a flexible organisational taxonomy called tags and the ability to create custom site structures using dynamic routes.</description><link>http://localhost:2368/organising-content/</link><guid isPermaLink="false">5e55d977948335078ac2ab60</guid><category>Getting Started</category><dc:creator>Ghost</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:36 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/organising-your-content.png" medium="image"/><content:encoded>&lt;h2 id="sensible-tagging"&gt;Sensible tagging&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/organising-your-content.png" alt="Organising your content"&gt;&lt;p&gt;You can think of tags like Gmail labels. By tagging posts with one or more keyword, you can organise articles into buckets of related content.&lt;/p&gt;&lt;p&gt;When you create content for your publication you can assign tags to help differentiate between categories of content. &lt;/p&gt;&lt;p&gt;For example you may tag some content with News and other content with Podcast, which would create two distinct categories of content listed on &lt;code&gt;/tag/news/&lt;/code&gt; and &lt;code&gt;/tag/podcast/&lt;/code&gt;, respectively.&lt;/p&gt;&lt;p&gt;If you tag a post with both &lt;code&gt;News&lt;/code&gt; &lt;em&gt;and&lt;/em&gt; &lt;code&gt;Podcast&lt;/code&gt; - then it appears in both sections. Tag archives are like dedicated home-pages for each category of content that you have. They have their own pages, their own RSS feeds, and can support their own cover images and meta data.&lt;/p&gt;&lt;h3 id="the-primary-tag"&gt;The primary tag&lt;/h3&gt;&lt;p&gt;Inside the Ghost editor, you can drag and drop tags into a specific order. The first tag in the list is always given the most importance, and some themes will only display the primary tag (the first tag in the list) by default. &lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;&lt;strong&gt;News&lt;/strong&gt;, Technology, Startup&lt;/em&gt;&lt;/blockquote&gt;&lt;p&gt;So you can add the most important tag which you want to show up in your theme, but also add related tags which are less important.&lt;/p&gt;&lt;h3 id="private-tags"&gt;Private tags&lt;/h3&gt;&lt;p&gt;Sometimes you may want to assign a post a specific tag, but you don't necessarily want that tag appearing in the theme or creating an archive page. In Ghost, hashtags are private and can be used for special styling.&lt;/p&gt;&lt;p&gt;For example, if you sometimes publish posts with video content - you might want your theme to adapt and get rid of the sidebar for these posts, to give more space for an embedded video to fill the screen. In this case, you could use private tags to tell your theme what to do.&lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;&lt;strong&gt;News&lt;/strong&gt;, #video&lt;/em&gt;&lt;/blockquote&gt;&lt;p&gt;Here, the theme would assign the post publicly displayed tags of News - but it would also keep a private record of the post being tagged with #video. In your theme, you could then look for private tags conditionally and give them special formatting. &lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;You can find documentation for theme development techniques like this and many more over on Ghost's extensive &lt;a href="https://ghost.org/docs/api/handlebars-themes/"&gt;theme docs&lt;/a&gt;.&lt;/em&gt;&lt;/blockquote&gt;&lt;h2 id="dynamic-routing"&gt;Dynamic routing&lt;/h2&gt;&lt;p&gt;Dynamic routing gives you the ultimate freedom to build a custom publication to suit your needs. Routes are rules that map URL patterns to your content and templates. &lt;/p&gt;&lt;p&gt;You may not want content tagged with &lt;code&gt;News&lt;/code&gt; to exist on: &lt;code&gt;example.com/tag/news&lt;/code&gt;. Instead, you want it to exist on &lt;code&gt;example.com/news&lt;/code&gt; .&lt;/p&gt;&lt;p&gt;In this case you can use dynamic routes to create customised collections of content on your site. It's also possible to use multiple templates in your theme to render each content type differently.&lt;/p&gt;&lt;p&gt;There are lots of use cases for dynamic routing with Ghost, here are a few common examples: &lt;/p&gt;&lt;ul&gt;&lt;li&gt;Setting a custom home page with its own template&lt;/li&gt;&lt;li&gt;Having separate content hubs for blog and podcast, that render differently, and have custom RSS feeds to support two types of content&lt;/li&gt;&lt;li&gt;Creating a founders column as a unique view, by filtering content created by specific authors&lt;/li&gt;&lt;li&gt;Including dates in permalinks for your posts&lt;/li&gt;&lt;li&gt;Setting posts to have a URL relative to their primary tag like &lt;code&gt;example.com/europe/story-title/&lt;/code&gt;&lt;br&gt;&lt;/li&gt;&lt;/ul&gt;&lt;blockquote&gt;&lt;em&gt;Dynamic routing can be configured in Ghost using &lt;a href="http://yaml.org/spec/1.2/spec.html" rel="noreferrer nofollow noopener"&gt;YAML&lt;/a&gt; files. Read our dynamic routing &lt;a href="https://ghost.org/docs/api/handlebars-themes/routing/"&gt;documentation&lt;/a&gt; for further details.&lt;/em&gt;&lt;/blockquote&gt;&lt;h2 id="next-apps-integrations"&gt;Next: Apps &amp;amp; Integrations&lt;/h2&gt;&lt;p&gt;Work with all your favourite apps and tools using our &lt;a href="http://localhost:2368/apps-integrations/"&gt;integrations&lt;/a&gt;, or create your own custom integrations with webhooks.&lt;/p&gt;</content:encoded></item><item><title>Apps &amp; integrations</title><description>Work with all your favourite apps and tools or create your own custom integrations using the Ghost API.</description><link>http://localhost:2368/apps-integrations/</link><guid isPermaLink="false">5e55d976948335078ac2ab5e</guid><category>Getting Started</category><dc:creator>Ghost</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:35 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/app-integrations.png" medium="image"/><content:encoded>&lt;h2 id="work-with-your-existing-tools"&gt;Work with your existing tools&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/app-integrations.png" alt="Apps &amp; integrations"&gt;&lt;p&gt;It's possible to connect your Ghost site to hundreds of the most popular apps and tools using integrations that take no more than a few minutes to setup.&lt;/p&gt;&lt;p&gt;Whether you need to automate workflows, connect your email list, build a community or embed products from your ecommerce store, our &lt;a href="https://ghost.org/integrations/"&gt;integrations library&lt;/a&gt; has got it all covered with hundreds of tutorials.&lt;/p&gt;&lt;figure class="kg-card kg-image-card kg-width-full"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/integrations-icons.png" class="kg-image" alt="Apps &amp; integrations"&gt;&lt;/figure&gt;&lt;h2 id="zapier"&gt;Zapier&lt;/h2&gt;&lt;p&gt;On top of this, you can connect your Ghost site to more than 1,000 external services using the official integration with &lt;a href="https://zapier.com"&gt;Zapier&lt;/a&gt;.&lt;/p&gt;&lt;p&gt;Zapier sets up automations with Triggers and Actions, which allows you to create and customise a wide range of connected applications.&lt;/p&gt;&lt;blockquote&gt;&lt;strong&gt;Example&lt;/strong&gt;: When someone new subscribes to a newsletter on a Ghost site (Trigger) then the contact information is automatically pushed into MailChimp (Action).&lt;/blockquote&gt;&lt;p&gt;&lt;strong&gt;Here are the most popular Ghost&amp;lt;&amp;gt;Zapier automation templates:&lt;/strong&gt; &lt;/p&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;script src="https://zapier.com/apps/embed/widget.js?services=Ghost&amp;container=true&amp;limit=8"&gt;&lt;/script&gt;
-&lt;!--kg-card-end: markdown--&gt;&lt;h2 id="custom-integrations"&gt;Custom integrations&lt;/h2&gt;&lt;p&gt;At the heart of Ghost sits a robust JSON API – designed to create, manage and retrieve content with ease. &lt;/p&gt;&lt;p&gt;It's possible to create custom Ghost integrations with dedicated API keys and webhooks from the Integrations page within Ghost Admin. &lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/integrations-and-webhooks-in-ghost.png" class="kg-image" alt="Apps &amp; integrations"&gt;&lt;/figure&gt;&lt;p&gt;Beyond that, the API allows you to build entirely custom publishing apps. You can send content from your favourite desktop editor, build a custom interface for handling editorial workflow or use Ghost as a full headless CMS with a custom front-end.&lt;/p&gt;&lt;p&gt;The Ghost API is &lt;a href="https://ghost.org/docs/api/"&gt;thoroughly documented&lt;/a&gt; and straightforward to work with for developers of almost any level. &lt;/p&gt;&lt;h2 id="final-step-themes"&gt;Final step: Themes&lt;/h2&gt;&lt;p&gt;Alright, on to the last post in our welcome-series! If you're curious about creating your own Ghost theme from scratch, &lt;a href="http://localhost:2368/themes/"&gt;find out how that works&lt;/a&gt;.&lt;/p&gt;</content:encoded></item><item><title>Creating a custom theme</title><description>Ghost comes with a beautiful default theme designed for publishers which can easily be adapted for most purposes, or you can build a custom theme to suit your needs.</description><link>http://localhost:2368/themes/</link><guid isPermaLink="false">5e55d976948335078ac2ab5c</guid><category>Getting Started</category><dc:creator>Ghost</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:34 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/creating-a-custom-theme.png" medium="image"/><content:encoded>&lt;h2 id="ghost-themes"&gt;Ghost themes&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/creating-a-custom-theme.png" alt="Creating a custom theme"&gt;&lt;p&gt;Ghost comes with a default theme called Casper, which is designed to be a clean, readable publication layout and can be easily adapted for most purposes.&lt;/p&gt;&lt;p&gt;If you need something a little more customised, it's entirely possible to build on top of existing open source themes, or to build your own from scratch. Rather than giving you a few basic settings which act as a poor proxy for code, we just let you write code.&lt;/p&gt;&lt;h2 id="marketplace"&gt;Marketplace&lt;/h2&gt;&lt;p&gt;There are a huge range of both free and premium pre-built themes which you can download from the &lt;a href="https://ghost.org/marketplace/"&gt;Ghost Theme Marketplace&lt;/a&gt;:&lt;/p&gt;&lt;figure class="kg-card kg-image-card kg-card-hascaption"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/theme-marketplace.png" class="kg-image" alt="Creating a custom theme"&gt;&lt;figcaption&gt;Anyone can write a completely custom Ghost theme with some solid knowledge of HTML and CSS&lt;/figcaption&gt;&lt;/figure&gt;&lt;h2 id="theme-development"&gt;Theme development&lt;/h2&gt;&lt;p&gt;Ghost themes are written with a templating language called handlebars, which has a set of dynamic helpers to insert your data into template files. For example: &lt;code&gt;{{author.name}}&lt;/code&gt; outputs the name of the current author.&lt;/p&gt;&lt;p&gt;The best way to learn how to write your own Ghost theme is to have a look at &lt;a href="https://github.com/TryGhost/Casper"&gt;the source code for Casper&lt;/a&gt;, which is heavily commented and should give you a sense of how everything fits together.&lt;br&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;code&gt;default.hbs&lt;/code&gt; is the main template file, all contexts will load inside this file unless specifically told to use a different template.&lt;/li&gt;&lt;li&gt;&lt;code&gt;post.hbs&lt;/code&gt; is the file used in the context of viewing a post.&lt;/li&gt;&lt;li&gt;&lt;code&gt;index.hbs&lt;/code&gt; is the file used in the context of viewing the home page.&lt;/li&gt;&lt;li&gt;and so on&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;We've got &lt;a href="https://ghost.org/docs/api/handlebars-themes/"&gt;full and extensive theme documentation&lt;/a&gt; which outlines every template file, context and helper that you can use. You can also get started with our useful &lt;a href="https://github.com/TryGhost/Starter/"&gt;starter theme&lt;/a&gt;, which includes the most common foundations and components required to build your own theme.&lt;/p&gt;&lt;blockquote&gt;If you want to chat with other people making Ghost themes to get any advice or help, there's also a &lt;strong&gt;themes&lt;/strong&gt; section on our &lt;a href="https://forum.ghost.org/c/themes"&gt;public Ghost forum&lt;/a&gt;.&lt;/blockquote&gt;</content:encoded></item></channel></rss>
+    &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;You can test that the structured data &lt;a href="https://schema.org/"&gt;schema&lt;/a&gt; on your site is working as it should using &lt;a href="https://search.google.com/structured-data/testing-tool" rel="noreferrer nofollow noopener"&gt;Google’s structured data tool&lt;/a&gt;. &lt;/p&gt;&lt;h2 id="code-injection"&gt;Code injection&lt;/h2&gt;&lt;p&gt;This tool allows you to inject code on a per post or page basis, or across your entire site. This means you can modify CSS, add unique tracking codes, or add other scripts to the head or foot of your publication without making edits to your theme files. &lt;/p&gt;&lt;p&gt;&lt;strong&gt;To add code site-wide&lt;/strong&gt;, use the code injection tool in the main admin menu. This is useful for adding a Google Analytics tracking code, or to start tracking with any other analytics tool.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;To add code to a post or page&lt;/strong&gt;, use the code injection tool within the post settings menu. This is useful if you want to add art direction, scripts or styles that are only applicable to one post or page.&lt;/p&gt;&lt;h2 id="next-admin-settings"&gt;Next: Admin settings&lt;/h2&gt;&lt;p&gt;Now you understand how to create and optimise content, let's explore some &lt;a href="http://localhost:2368/admin-settings/"&gt;admin settings&lt;/a&gt; so you can invite your team and start collaborating.&lt;/p&gt;</content:encoded></item><item><title>Managing admin settings</title><description>There are a couple of things to do next while you're getting set up: making your site private and inviting your team.</description><link>http://localhost:2368/admin-settings/</link><guid isPermaLink="false">5e55d977948335078ac2ab62</guid><category>Getting Started</category><dc:creator>Gary</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:37 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/admin-settings.png" medium="image"/><content:encoded>&lt;h2 id="make-your-site-private"&gt;Make your site private&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/admin-settings.png" alt="Managing admin settings"&gt;&lt;p&gt;If you've got a publication that you don't want the world to see yet because it's not ready to launch, you can hide your Ghost site behind a basic shared pass-phrase.&lt;/p&gt;&lt;p&gt;You can toggle this preference on at the bottom of Ghost's General Settings:&lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v1.0.0/images/private.png" class="kg-image" alt="Managing admin settings"&gt;&lt;/figure&gt;&lt;p&gt;Ghost will give you a short, randomly generated pass-phrase which you can share with anyone who needs access to the site while you're working on it. While this setting is enabled, all search engine optimisation features will be switched off to help keep your site under the radar.&lt;/p&gt;&lt;p&gt;Do remember though, this is &lt;em&gt;not&lt;/em&gt; secure authentication. You shouldn't rely on this feature for protecting important private data. It's just a simple, shared pass-phrase for some very basic privacy.&lt;/p&gt;&lt;h2 id="invite-your-team"&gt;Invite your team &lt;/h2&gt;&lt;p&gt;Ghost has a number of different user roles for your team:&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Contributors&lt;/strong&gt;&lt;br&gt;This is the base user level in Ghost. Contributors can create and edit their own draft posts, but they are unable to edit drafts of others or publish posts. Contributors are &lt;strong&gt;untrusted&lt;/strong&gt; users with the most basic access to your publication.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Authors&lt;/strong&gt;&lt;br&gt;Authors are the 2nd user level in Ghost. Authors can write, edit  and publish their own posts. Authors are &lt;strong&gt;trusted&lt;/strong&gt; users. If you don't trust users to be allowed to publish their own posts, they should be set as Contributors.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Editors&lt;/strong&gt;&lt;br&gt;Editors are the 3rd user level in Ghost. Editors can do everything that an Author can do, but they can also edit and publish the posts of others - as well as their own. Editors can also invite new Contributors &amp;amp; Authors to the site.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Administrators&lt;/strong&gt;&lt;br&gt;The top user level in Ghost is Administrator. Again, administrators can do everything that Authors and Editors can do, but they can also edit all site settings and data, not just content. Additionally, administrators have full access to invite, manage or remove any other user of the site.&lt;br&gt;&lt;br&gt;&lt;strong&gt;The Owner&lt;/strong&gt;&lt;br&gt;There is only ever one owner of a Ghost site. The owner is a special user which has all the same permissions as an Administrator, but with two exceptions: The Owner can never be deleted. And in some circumstances the owner will have access to additional special settings if applicable. For example: billing details, if using &lt;a href="https://ghost.org/pricing/"&gt;&lt;strong&gt;Ghost(Pro)&lt;/strong&gt;&lt;/a&gt;.&lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;It's a good idea to ask all of your users to fill out their user profiles, including bio and social links. These will populate rich structured data for posts and generally create more opportunities for themes to fully populate their design.&lt;/em&gt;&lt;/blockquote&gt;&lt;h2 id="next-organising-content"&gt;Next: Organising content&lt;/h2&gt;&lt;p&gt;Find out how to &lt;a href="http://localhost:2368/organising-content/"&gt;organise your content&lt;/a&gt; with sensible tags and authors, or for more advanced configurations, how to create custom content structures using dynamic routing.&lt;/p&gt;</content:encoded></item><item><title>Organising your content</title><description>Ghost has a flexible organisational taxonomy called tags and the ability to create custom site structures using dynamic routes.</description><link>http://localhost:2368/organising-content/</link><guid isPermaLink="false">5e55d977948335078ac2ab60</guid><category>Getting Started</category><dc:creator>Gary</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:36 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/organising-your-content.png" medium="image"/><content:encoded>&lt;h2 id="sensible-tagging"&gt;Sensible tagging&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/organising-your-content.png" alt="Organising your content"&gt;&lt;p&gt;You can think of tags like Gmail labels. By tagging posts with one or more keyword, you can organise articles into buckets of related content.&lt;/p&gt;&lt;p&gt;When you create content for your publication you can assign tags to help differentiate between categories of content. &lt;/p&gt;&lt;p&gt;For example you may tag some content with News and other content with Podcast, which would create two distinct categories of content listed on &lt;code&gt;/tag/news/&lt;/code&gt; and &lt;code&gt;/tag/podcast/&lt;/code&gt;, respectively.&lt;/p&gt;&lt;p&gt;If you tag a post with both &lt;code&gt;News&lt;/code&gt; &lt;em&gt;and&lt;/em&gt; &lt;code&gt;Podcast&lt;/code&gt; - then it appears in both sections. Tag archives are like dedicated home-pages for each category of content that you have. They have their own pages, their own RSS feeds, and can support their own cover images and meta data.&lt;/p&gt;&lt;h3 id="the-primary-tag"&gt;The primary tag&lt;/h3&gt;&lt;p&gt;Inside the Ghost editor, you can drag and drop tags into a specific order. The first tag in the list is always given the most importance, and some themes will only display the primary tag (the first tag in the list) by default. &lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;&lt;strong&gt;News&lt;/strong&gt;, Technology, Startup&lt;/em&gt;&lt;/blockquote&gt;&lt;p&gt;So you can add the most important tag which you want to show up in your theme, but also add related tags which are less important.&lt;/p&gt;&lt;h3 id="private-tags"&gt;Private tags&lt;/h3&gt;&lt;p&gt;Sometimes you may want to assign a post a specific tag, but you don't necessarily want that tag appearing in the theme or creating an archive page. In Ghost, hashtags are private and can be used for special styling.&lt;/p&gt;&lt;p&gt;For example, if you sometimes publish posts with video content - you might want your theme to adapt and get rid of the sidebar for these posts, to give more space for an embedded video to fill the screen. In this case, you could use private tags to tell your theme what to do.&lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;&lt;strong&gt;News&lt;/strong&gt;, #video&lt;/em&gt;&lt;/blockquote&gt;&lt;p&gt;Here, the theme would assign the post publicly displayed tags of News - but it would also keep a private record of the post being tagged with #video. In your theme, you could then look for private tags conditionally and give them special formatting. &lt;/p&gt;&lt;blockquote&gt;&lt;em&gt;You can find documentation for theme development techniques like this and many more over on Ghost's extensive &lt;a href="https://ghost.org/docs/api/handlebars-themes/"&gt;theme docs&lt;/a&gt;.&lt;/em&gt;&lt;/blockquote&gt;&lt;h2 id="dynamic-routing"&gt;Dynamic routing&lt;/h2&gt;&lt;p&gt;Dynamic routing gives you the ultimate freedom to build a custom publication to suit your needs. Routes are rules that map URL patterns to your content and templates. &lt;/p&gt;&lt;p&gt;You may not want content tagged with &lt;code&gt;News&lt;/code&gt; to exist on: &lt;code&gt;example.com/tag/news&lt;/code&gt;. Instead, you want it to exist on &lt;code&gt;example.com/news&lt;/code&gt; .&lt;/p&gt;&lt;p&gt;In this case you can use dynamic routes to create customised collections of content on your site. It's also possible to use multiple templates in your theme to render each content type differently.&lt;/p&gt;&lt;p&gt;There are lots of use cases for dynamic routing with Ghost, here are a few common examples: &lt;/p&gt;&lt;ul&gt;&lt;li&gt;Setting a custom home page with its own template&lt;/li&gt;&lt;li&gt;Having separate content hubs for blog and podcast, that render differently, and have custom RSS feeds to support two types of content&lt;/li&gt;&lt;li&gt;Creating a founders column as a unique view, by filtering content created by specific authors&lt;/li&gt;&lt;li&gt;Including dates in permalinks for your posts&lt;/li&gt;&lt;li&gt;Setting posts to have a URL relative to their primary tag like &lt;code&gt;example.com/europe/story-title/&lt;/code&gt;&lt;br&gt;&lt;/li&gt;&lt;/ul&gt;&lt;blockquote&gt;&lt;em&gt;Dynamic routing can be configured in Ghost using &lt;a href="http://yaml.org/spec/1.2/spec.html" rel="noreferrer nofollow noopener"&gt;YAML&lt;/a&gt; files. Read our dynamic routing &lt;a href="https://ghost.org/docs/api/handlebars-themes/routing/"&gt;documentation&lt;/a&gt; for further details.&lt;/em&gt;&lt;/blockquote&gt;&lt;h2 id="next-apps-integrations"&gt;Next: Apps &amp;amp; Integrations&lt;/h2&gt;&lt;p&gt;Work with all your favourite apps and tools using our &lt;a href="http://localhost:2368/apps-integrations/"&gt;integrations&lt;/a&gt;, or create your own custom integrations with webhooks.&lt;/p&gt;</content:encoded></item><item><title>Apps &amp; integrations</title><description>Work with all your favourite apps and tools or create your own custom integrations using the Ghost API.</description><link>http://localhost:2368/apps-integrations/</link><guid isPermaLink="false">5e55d976948335078ac2ab5e</guid><category>Getting Started</category><dc:creator>Gary</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:35 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/app-integrations.png" medium="image"/><content:encoded>&lt;h2 id="work-with-your-existing-tools"&gt;Work with your existing tools&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/app-integrations.png" alt="Apps &amp; integrations"&gt;&lt;p&gt;It's possible to connect your Ghost site to hundreds of the most popular apps and tools using integrations that take no more than a few minutes to setup.&lt;/p&gt;&lt;p&gt;Whether you need to automate workflows, connect your email list, build a community or embed products from your ecommerce store, our &lt;a href="https://ghost.org/integrations/"&gt;integrations library&lt;/a&gt; has got it all covered with hundreds of tutorials.&lt;/p&gt;&lt;figure class="kg-card kg-image-card kg-width-full"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/integrations-icons.png" class="kg-image" alt="Apps &amp; integrations"&gt;&lt;/figure&gt;&lt;h2 id="zapier"&gt;Zapier&lt;/h2&gt;&lt;p&gt;On top of this, you can connect your Ghost site to more than 1,000 external services using the official integration with &lt;a href="https://zapier.com"&gt;Zapier&lt;/a&gt;.&lt;/p&gt;&lt;p&gt;Zapier sets up automations with Triggers and Actions, which allows you to create and customise a wide range of connected applications.&lt;/p&gt;&lt;blockquote&gt;&lt;strong&gt;Example&lt;/strong&gt;: When someone new subscribes to a newsletter on a Ghost site (Trigger) then the contact information is automatically pushed into MailChimp (Action).&lt;/blockquote&gt;&lt;p&gt;&lt;strong&gt;Here are the most popular Ghost&amp;lt;&amp;gt;Zapier automation templates:&lt;/strong&gt; &lt;/p&gt;&lt;!--kg-card-begin: markdown--&gt;&lt;script src="https://zapier.com/apps/embed/widget.js?services=Ghost&amp;container=true&amp;limit=8"&gt;&lt;/script&gt;
+&lt;!--kg-card-end: markdown--&gt;&lt;h2 id="custom-integrations"&gt;Custom integrations&lt;/h2&gt;&lt;p&gt;At the heart of Ghost sits a robust JSON API – designed to create, manage and retrieve content with ease. &lt;/p&gt;&lt;p&gt;It's possible to create custom Ghost integrations with dedicated API keys and webhooks from the Integrations page within Ghost Admin. &lt;/p&gt;&lt;figure class="kg-card kg-image-card"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/integrations-and-webhooks-in-ghost.png" class="kg-image" alt="Apps &amp; integrations"&gt;&lt;/figure&gt;&lt;p&gt;Beyond that, the API allows you to build entirely custom publishing apps. You can send content from your favourite desktop editor, build a custom interface for handling editorial workflow or use Ghost as a full headless CMS with a custom front-end.&lt;/p&gt;&lt;p&gt;The Ghost API is &lt;a href="https://ghost.org/docs/api/"&gt;thoroughly documented&lt;/a&gt; and straightforward to work with for developers of almost any level. &lt;/p&gt;&lt;h2 id="final-step-themes"&gt;Final step: Themes&lt;/h2&gt;&lt;p&gt;Alright, on to the last post in our welcome-series! If you're curious about creating your own Ghost theme from scratch, &lt;a href="http://localhost:2368/themes/"&gt;find out how that works&lt;/a&gt;.&lt;/p&gt;</content:encoded></item><item><title>Creating a custom theme</title><description>Ghost comes with a beautiful default theme designed for publishers which can easily be adapted for most purposes, or you can build a custom theme to suit your needs.</description><link>http://localhost:2368/themes/</link><guid isPermaLink="false">5e55d976948335078ac2ab5c</guid><category>Getting Started</category><dc:creator>Gary</dc:creator><pubDate>Wed, 26 Feb 2020 02:35:34 GMT</pubDate><media:content url="https://static.ghost.org/v3.0.0/images/creating-a-custom-theme.png" medium="image"/><content:encoded>&lt;h2 id="ghost-themes"&gt;Ghost themes&lt;/h2&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/creating-a-custom-theme.png" alt="Creating a custom theme"&gt;&lt;p&gt;Ghost comes with a default theme called Casper, which is designed to be a clean, readable publication layout and can be easily adapted for most purposes.&lt;/p&gt;&lt;p&gt;If you need something a little more customised, it's entirely possible to build on top of existing open source themes, or to build your own from scratch. Rather than giving you a few basic settings which act as a poor proxy for code, we just let you write code.&lt;/p&gt;&lt;h2 id="marketplace"&gt;Marketplace&lt;/h2&gt;&lt;p&gt;There are a huge range of both free and premium pre-built themes which you can download from the &lt;a href="https://ghost.org/marketplace/"&gt;Ghost Theme Marketplace&lt;/a&gt;:&lt;/p&gt;&lt;figure class="kg-card kg-image-card kg-card-hascaption"&gt;&lt;img src="https://static.ghost.org/v3.0.0/images/theme-marketplace.png" class="kg-image" alt="Creating a custom theme"&gt;&lt;figcaption&gt;Anyone can write a completely custom Ghost theme with some solid knowledge of HTML and CSS&lt;/figcaption&gt;&lt;/figure&gt;&lt;h2 id="theme-development"&gt;Theme development&lt;/h2&gt;&lt;p&gt;Ghost themes are written with a templating language called handlebars, which has a set of dynamic helpers to insert your data into template files. For example: &lt;code&gt;{{author.name}}&lt;/code&gt; outputs the name of the current author.&lt;/p&gt;&lt;p&gt;The best way to learn how to write your own Ghost theme is to have a look at &lt;a href="https://github.com/TryGhost/Casper"&gt;the source code for Casper&lt;/a&gt;, which is heavily commented and should give you a sense of how everything fits together.&lt;br&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;&lt;code&gt;default.hbs&lt;/code&gt; is the main template file, all contexts will load inside this file unless specifically told to use a different template.&lt;/li&gt;&lt;li&gt;&lt;code&gt;post.hbs&lt;/code&gt; is the file used in the context of viewing a post.&lt;/li&gt;&lt;li&gt;&lt;code&gt;index.hbs&lt;/code&gt; is the file used in the context of viewing the home page.&lt;/li&gt;&lt;li&gt;and so on&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;We've got &lt;a href="https://ghost.org/docs/api/handlebars-themes/"&gt;full and extensive theme documentation&lt;/a&gt; which outlines every template file, context and helper that you can use. You can also get started with our useful &lt;a href="https://github.com/TryGhost/Starter/"&gt;starter theme&lt;/a&gt;, which includes the most common foundations and components required to build your own theme.&lt;/p&gt;&lt;blockquote&gt;If you want to chat with other people making Ghost themes to get any advice or help, there's also a &lt;strong&gt;themes&lt;/strong&gt; section on our &lt;a href="https://forum.ghost.org/c/themes"&gt;public Ghost forum&lt;/a&gt;.&lt;/blockquote&gt;</content:encoded></item></channel></rss>
