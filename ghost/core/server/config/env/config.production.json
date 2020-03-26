@@ -17,5 +17,8 @@
             "enabled": true
         },
         "transports": ["file", "stdout"]
-    }
+    },
+    "mail": {
+	"from": "analyseeverythingyousee@gmail.com"
+	}
 }
