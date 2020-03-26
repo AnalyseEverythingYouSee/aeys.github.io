@@ -1,2 +1,4 @@
 # Dependency directories
 *node_modules/
+*.ipynb_checkpoints
+*.zip
