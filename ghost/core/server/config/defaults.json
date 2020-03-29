@@ -102,5 +102,18 @@
     "compress": true,
     "preloadHeaders": false,
     "adminFrameProtection": true,
-    "sendWelcomeEmail": true
+    "sendWelcomeEmail": true,
+	"mail": {
+		"transport": "smtp",
+		"options": {
+			"pool": true,
+			"host": "smtp.gmail.com",
+			"port": 587,
+			"secure": true,
+			"auth": {
+				"user": "AnalyseEverythingYouSee@gmail.com",
+				"pass": ""
+			}
+		}
+    }
 }
